@@ -82,6 +82,58 @@ struct HalfKAv2_hmExtractor: IFeatureExtractor {
     }
 };
 
+struct ShayveriKB16 {
+    static constexpr std::string_view NAME = "ShayveriKB16";
+
+    static constexpr int NUM_SQ              = 64;
+    static constexpr int NUM_PT              = 12;
+    static constexpr int NUM_PLANES          = NUM_SQ * NUM_PT;
+    static constexpr int NUM_BUCKETS         = 16;
+    static constexpr int INPUTS              = NUM_PLANES * NUM_BUCKETS;
+    static constexpr int MAX_ACTIVE_FEATURES = 32;
+
+    static int feature_index(Color color, Square ksq, Square sq, Piece p) {
+        int perspective = color == Color::Black ? 1 : 0;
+        int piece_sq = static_cast<int>(sq) ^ (perspective ? 56 : 0);
+        int piece_colour = p.color() == Color::Black ? 1 : 0;
+        int piece_type = static_cast<int>(p.type());
+        int base = (((piece_colour ^ perspective) * 6) + piece_type) * 64 + piece_sq;
+
+        int king_sq = static_cast<int>(ksq);
+        int effective_king_sq = king_sq ^ (perspective ? 56 : 0);
+        int king_file = king_sq & 7;
+        constexpr int FileMap[8] = {0, 1, 2, 3, 3, 2, 1, 0};
+        int bucket = ((effective_king_sq >> 3) / 2) * 4 + FileMap[king_file];
+        int horizontal_flip = king_file > 3 ? 7 : 0;
+
+        return bucket * NUM_PLANES + (base ^ horizontal_flip);
+    }
+
+    static std::pair<int, int>
+    fill_features_sparse(const TrainingDataEntry& e, int* features, Color color) {
+        auto& pos = e.pos;
+        auto pieces = pos.piecesBB();
+        auto ksq = pos.kingSquare(color);
+
+        int j = 0;
+        for (Square sq : pieces)
+        {
+            features[j++] = feature_index(color, ksq, sq, pos.pieceAt(sq));
+        }
+        return {j, INPUTS};
+    }
+};
+
+struct ShayveriKB16Extractor: IFeatureExtractor {
+    int inputs() const override { return ShayveriKB16::INPUTS; }
+    int max_active_features() const override { return ShayveriKB16::MAX_ACTIVE_FEATURES; }
+    std::pair<int, int> fill_features_sparse(const TrainingDataEntry& e,
+                                             int* features,
+                                             Color color) const override {
+        return ShayveriKB16::fill_features_sparse(e, features, color);
+    }
+};
+
 constexpr int numvalidtargets[12] = {6, 6, 10, 10, 8, 8, 8, 8, 10, 10, 0, 0};
 
 using ThreatOffsetTable = std::array<std::array<int, 66>, 12>;
@@ -351,6 +403,8 @@ struct ComposedFeatureExtractor: IFeatureExtractor {
 static std::unique_ptr<IFeatureExtractor> make_single_extractor(std::string_view name) {
     if (name == "HalfKAv2_hm")
         return std::make_unique<HalfKAv2_hmExtractor>();
+    if (name == "ShayveriKB16")
+        return std::make_unique<ShayveriKB16Extractor>();
     if (name == "Full_Threats")
         return std::make_unique<FullThreatsExtractor>();
     return nullptr;

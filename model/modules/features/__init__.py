@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from .full_threats import FullThreats
 from .halfka_v2_hm import HalfKav2Hm
 from .input_feature import InputFeature
+from .shayveri_kb16 import ShayveriKB16
 
 import tyro
 from typing import Annotated
@@ -13,6 +14,7 @@ from typing import Annotated
 _FEATURE_COMPONENTS: dict[str, type[InputFeature]] = {
     "HalfKAv2_hm^": HalfKav2Hm,
     "Full_Threats": FullThreats,
+    "ShayveriKB16^": ShayveriKB16,
 }
 
 
@@ -51,6 +53,7 @@ def add_feature_args(parser: argparse.ArgumentParser) -> None:
 __all__ = [
     "HalfKav2Hm",
     "FullThreats",
+    "ShayveriKB16",
     "InputFeature",
     "get_feature_cls",
     "get_available_features",
