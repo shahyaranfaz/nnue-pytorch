@@ -102,13 +102,22 @@ def main():
             nnue = M.NNUE(
                 config=nnue_lightning_config,
             )
-            reader = M.NNUEReader(
-                f,
-                feature_name,
-                config=nnue_lightning_config.model_config,
-            )
+            if nnue_lightning_config.model_config.architecture == "shayveri-direct":
+                reader = M.ShayveriNNUEReader(
+                    f,
+                    use_factorizer=nnue_lightning_config.model_config.shayveri_factorizer,
+                )
+            else:
+                reader = M.NNUEReader(
+                    f,
+                    feature_name,
+                    config=nnue_lightning_config.model_config,
+                )
             nnue.model = reader.model
-            if serialize_config.description is None:
+            if (
+                serialize_config.description is None
+                and hasattr(reader, "description")
+            ):
                 model_description = reader.description
     else:
         raise Exception("Invalid network input format.")

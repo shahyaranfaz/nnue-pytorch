@@ -1,6 +1,7 @@
 import torch
 
 from .serialize import NNUEReader
+from .shayveri_serialize import ShayveriNNUEReader
 from ..config import ModelConfig, NNUELightningConfig
 from ..model import NNUEModel
 
@@ -30,7 +31,13 @@ def load_model(
 
     elif filename.endswith(".nnue"):
         with open(filename, "rb") as f:
-            reader = NNUEReader(f, feature_name, config)
+            if config.architecture == "shayveri-direct":
+                reader = ShayveriNNUEReader(
+                    f,
+                    use_factorizer=config.shayveri_factorizer,
+                )
+            else:
+                reader = NNUEReader(f, feature_name, config)
         return reader.model
 
     else:

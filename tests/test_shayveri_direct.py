@@ -1,10 +1,11 @@
 import struct
+from io import BytesIO
 
 import torch
 
 from model.shayveri_model import ShayveriDirectModel
 from model.lightning_module import calculate_bullet_loss
-from model.utils.shayveri_serialize import ShayveriNNUEWriter
+from model.utils.shayveri_serialize import ShayveriNNUEReader, ShayveriNNUEWriter
 
 
 def test_direct_model_selects_stm_perspective():
@@ -101,3 +102,22 @@ def test_writer_matches_shayveri_layout_and_integer_evaluation():
         True,
     )
     assert torch.allclose(output, torch.tensor([[engine_sum / (255 * 255)]]))
+
+
+def test_reader_round_trip_is_exact_and_enables_zeroed_factorizer():
+    model = ShayveriDirectModel()
+    with torch.no_grad():
+        model.input.weight.uniform_(-0.5, 0.5)
+        model.input.bias.uniform_(-0.5, 0.5)
+        model.output.weight.uniform_(-0.5, 0.5)
+        model.output.bias.uniform_(-0.5, 0.5)
+
+    original = ShayveriNNUEWriter(model).buf
+    loaded = ShayveriNNUEReader(
+        BytesIO(original),
+        use_factorizer=True,
+    ).model
+
+    assert loaded.input.virtual_weight.requires_grad
+    assert torch.count_nonzero(loaded.input.virtual_weight) == 0
+    assert ShayveriNNUEWriter(loaded).buf == original

@@ -17,6 +17,7 @@ from .utils import (
     load_model,
     NNUEReader,
     NNUEWriter,
+    ShayveriNNUEReader,
     ShayveriNNUEWriter,
 )
 
@@ -38,6 +39,7 @@ __all__ = [
     "NNUEReader",
     "NNUEWriter",
     "ShayveriNNUEWriter",
+    "ShayveriNNUEReader",
     "NNUELightningConfig",
     "OptimizerConfig",
     "FeatureConfig",

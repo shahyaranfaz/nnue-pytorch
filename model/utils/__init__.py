@@ -1,6 +1,6 @@
 from .load_model import load_model
 from .serialize import NNUEReader, NNUEWriter
-from .shayveri_serialize import ShayveriNNUEWriter
+from .shayveri_serialize import ShayveriNNUEReader, ShayveriNNUEWriter
 
 
 __all__ = [
@@ -8,4 +8,5 @@ __all__ = [
     "NNUEReader",
     "NNUEWriter",
     "ShayveriNNUEWriter",
+    "ShayveriNNUEReader",
 ]
