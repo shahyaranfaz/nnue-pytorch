@@ -6,6 +6,7 @@ from torchmetrics import MeanMetric, MetricCollection
 
 from .config import NNUELightningConfig
 from .model import NNUEModel
+from .shayveri_model import ShayveriDirectModel
 from .lambda_utils import LambdaController
 
 
@@ -85,12 +86,19 @@ class NNUE(L.LightningModule):
     ):
         super().__init__()
 
-        self.model: NNUEModel = NNUEModel(
-            config.features,
-            config.model_config,
-            num_psqt_buckets,
-            num_ls_buckets,
-        )
+        if config.architecture == "shayveri-direct":
+            if config.features != "ShayveriKB16^":
+                raise ValueError(
+                    "shayveri-direct requires --features ShayveriKB16^"
+                )
+            self.model = ShayveriDirectModel()
+        else:
+            self.model = NNUEModel(
+                config.features,
+                config.model_config,
+                num_psqt_buckets,
+                num_ls_buckets,
+            )
         self.config = config
         self.max_epoch = max_epoch
         self.num_batches_per_epoch = num_batches_per_epoch
@@ -114,6 +122,10 @@ class NNUE(L.LightningModule):
     def configure_optimizers(self):
         optimizer_config = self.config.optimizer_config
         self.optimizer_wrapper = optimizer_config.get_optimizer_wrapper()
+
+        if isinstance(self.model, ShayveriDirectModel):
+            train_params = self.model.optimizer_param_groups(optimizer_config)
+            return self.optimizer_wrapper.configure_optimizers(train_params)
 
         LRs = [optimizer_config.lr] * 10
 

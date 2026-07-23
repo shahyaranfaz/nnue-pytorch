@@ -172,9 +172,14 @@ def main():
             out_dir = os.path.abspath(os.path.dirname(args.target) or os.getcwd())
         os.makedirs(out_dir, exist_ok=True)
 
-        writer = M.NNUEWriter(
-            nnue.model, model_description, ft_compression=ft_compression
-        )
+        if isinstance(nnue.model, M.ShayveriDirectModel):
+            if ft_compression != "none":
+                print("SHAYVERI format does not use feature compression.")
+            writer = M.ShayveriNNUEWriter(nnue.model)
+        else:
+            writer = M.NNUEWriter(
+                nnue.model, model_description, ft_compression=ft_compression
+            )
         buf = writer.buf
 
         if serialize_config.out_sha:

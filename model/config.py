@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Annotated
+from typing import Annotated, Literal
 
 import tyro
 from tyro.conf import OmitArgPrefixes
@@ -93,6 +93,8 @@ class LossParams:
 
 @dataclass(kw_only=True)
 class NNUELightningConfig(FeatureConfig):
+    architecture: Literal["stockfish", "shayveri-direct"] = "stockfish"
+    """Network architecture. shayveri-direct matches SHAYVERI's runtime."""
     use_fake_act_quantization: bool = True
     """Whether to use fake quantization with STE for activations during training."""
     use_fake_weight_quantization: bool = True
