@@ -4,9 +4,12 @@
 #include "parallel_dataloader.h"
 
 #include <optional>
+#include <bit>
+#include <cstdint>
 #include <fstream>
 #include <string>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 #include <functional>
 #include <atomic>
@@ -109,6 +112,145 @@ namespace training_data {
         }
 
         ~BinSfenInputStream() override {}
+
+    private:
+        std::fstream m_stream;
+        std::string m_filename;
+        std::atomic<bool> m_eof;
+        bool m_cyclic;
+        std::function<bool(const TrainingDataEntry&)> m_skipPredicate;
+    };
+
+    #pragma pack(push, 1)
+    struct BulletFormatEntry
+    {
+        std::uint64_t occupancy;
+        std::uint8_t pieces[16];
+        std::int16_t score;
+        std::uint8_t result;
+        std::uint8_t king_square;
+        std::uint8_t opp_king_square;
+        std::uint8_t padding[3];
+    };
+    #pragma pack(pop)
+
+    static_assert(sizeof(BulletFormatEntry) == 32);
+
+    inline TrainingDataEntry bulletFormatToTrainingDataEntry(
+        const BulletFormatEntry& packed
+    )
+    {
+        if (packed.result > 2)
+            throw std::runtime_error("invalid Bullet result");
+        if (std::popcount(packed.occupancy) > 32)
+            throw std::runtime_error("too many pieces in Bullet record");
+
+        chess::Board board;
+        std::uint64_t occupancy = packed.occupancy;
+        int piece_index = 0;
+        while (occupancy)
+        {
+            const int square = std::countr_zero(occupancy);
+            occupancy &= occupancy - 1;
+
+            const std::uint8_t byte = packed.pieces[piece_index / 2];
+            const std::uint8_t code = piece_index % 2 == 0
+                                    ? byte & 0x0F
+                                    : byte >> 4;
+            const int piece_type = code & 0x07;
+            if (piece_type > static_cast<int>(chess::PieceType::King))
+                throw std::runtime_error("invalid Bullet piece code");
+
+            const auto color = (code & 0x08) != 0
+                             ? chess::Color::Black
+                             : chess::Color::White;
+            board.place(
+                chess::Piece(static_cast<chess::PieceType>(piece_type), color),
+                chess::Square(square)
+            );
+            ++piece_index;
+        }
+
+        if (!board.isValid())
+            throw std::runtime_error("invalid board in Bullet record");
+        if (static_cast<int>(board.kingSquare(chess::Color::White))
+            != packed.king_square)
+            throw std::runtime_error("white king mismatch in Bullet record");
+
+        TrainingDataEntry entry{};
+        entry.pos = chess::Position(
+            board,
+            chess::Color::White,
+            chess::Square::none(),
+            chess::CastlingRights::None
+        );
+        entry.score = packed.score;
+        entry.ply = 0;
+        entry.result = static_cast<std::int16_t>(packed.result) - 1;
+        return entry;
+    }
+
+    struct BulletSfenInputStream : BasicSfenInputStream
+    {
+        static constexpr auto openmode = std::ios::in | std::ios::binary;
+        static inline const std::string extension = "bullet";
+
+        BulletSfenInputStream(
+            std::string filename,
+            bool cyclic,
+            std::function<bool(const TrainingDataEntry&)> skipPredicate
+        ) :
+            m_stream(filename, openmode),
+            m_filename(std::move(filename)),
+            m_eof(!m_stream),
+            m_cyclic(cyclic),
+            m_skipPredicate(std::move(skipPredicate))
+        {
+            if (!m_stream)
+                return;
+            m_stream.seekg(0, std::ios::end);
+            const auto size = m_stream.tellg();
+            if (size < 0 || size % sizeof(BulletFormatEntry) != 0)
+                throw std::runtime_error(
+                    "Bullet file size is not a multiple of 32 bytes"
+                );
+            m_stream.seekg(0, std::ios::beg);
+        }
+
+        std::optional<TrainingDataEntry> next() override
+        {
+            BulletFormatEntry packed{};
+            bool reopened_file_once = false;
+            for (;;)
+            {
+                if (m_stream.read(
+                    reinterpret_cast<char*>(&packed), sizeof(packed)
+                ))
+                {
+                    auto entry = bulletFormatToTrainingDataEntry(packed);
+                    if (!m_skipPredicate || !m_skipPredicate(entry))
+                        return entry;
+                }
+                else
+                {
+                    if (m_cyclic)
+                    {
+                        if (reopened_file_once)
+                            return std::nullopt;
+                        m_stream = std::fstream(m_filename, openmode);
+                        reopened_file_once = true;
+                        if (!m_stream)
+                            return std::nullopt;
+                        continue;
+                    }
+
+                    m_eof.store(true, std::memory_order_release);
+                    return std::nullopt;
+                }
+            }
+        }
+
+        bool eof() const override { return m_eof.load(); }
 
     private:
         std::fstream m_stream;
@@ -240,6 +382,8 @@ namespace training_data {
     {
         if (has_extension(filename, BinSfenInputStream::extension))
             return std::make_unique<BinSfenInputStream>(filename, cyclic, std::move(skipPredicate));
+        else if (has_extension(filename, BulletSfenInputStream::extension))
+            return std::make_unique<BulletSfenInputStream>(filename, cyclic, std::move(skipPredicate));
         else if (has_extension(filename, BinpackSfenInputStream::extension))
             return std::make_unique<BinpackSfenInputStream>(filename, cyclic, std::move(skipPredicate));
 
@@ -251,6 +395,16 @@ namespace training_data {
         // TODO (low priority): optimize and parallelize .bin reading.
         if (has_extension(filenames[0], BinSfenInputStream::extension))
             return std::make_unique<BinSfenInputStream>(filenames[0], cyclic, std::move(skipPredicate));
+        else if (has_extension(filenames[0], BulletSfenInputStream::extension))
+        {
+            if (filenames.size() != 1)
+                throw std::runtime_error(
+                    "Bullet input currently supports exactly one file"
+                );
+            return std::make_unique<BulletSfenInputStream>(
+                filenames[0], cyclic, std::move(skipPredicate)
+            );
+        }
         else if (has_extension(filenames[0], BinpackSfenInputParallelStream::extension))
             return std::make_unique<BinpackSfenInputParallelStream>(concurrency, filenames, cyclic, std::move(skipPredicate), rank, world_size);
 
