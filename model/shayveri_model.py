@@ -42,12 +42,13 @@ class ShayveriDirectModel(nn.Module):
     feature_name = "ShayveriKB16^"
     input_feature_name = "ShayveriKB16"
 
-    def __init__(self):
+    def __init__(self, use_factorizer: bool = False):
         super().__init__()
         self.quantization = _ShayveriQuantization()
         self.input = ShayveriKB16(self.L1)
         self.input.bias = nn.Parameter(torch.zeros(self.L1, dtype=torch.float32))
         self.input.init_weights(0, self.quantization.nnue2score)
+        self.input.virtual_weight.requires_grad_(use_factorizer)
         self.output = nn.Linear(self.L1 * 2, 1)
         self.feature_hash = self.input.HASH
 
@@ -64,26 +65,38 @@ class ShayveriDirectModel(nn.Module):
         self.input.zero_virtual_weights()
 
     def optimizer_param_groups(self, optimizer_config):
+        adamw = optimizer_config.optimizer_name == "adamw"
+        ft_decay = (
+            optimizer_config.adamw_weight_decay
+            if adamw else optimizer_config.ft_weight_decay
+        )
+        dense_decay = (
+            optimizer_config.adamw_weight_decay
+            if adamw else optimizer_config.dense_weight_decay
+        )
+        input_weights = [self.input.weight]
+        if self.input.virtual_weight.requires_grad:
+            input_weights.append(self.input.virtual_weight)
         return [
             {
-                "params": [self.input.weight, self.input.virtual_weight],
+                "params": input_weights,
                 "lr": optimizer_config.lr,
-                "weight_decay": optimizer_config.ft_weight_decay,
+                "weight_decay": ft_decay,
             },
             {
                 "params": [self.input.bias],
                 "lr": optimizer_config.lr,
-                "weight_decay": 0.0,
+                "weight_decay": optimizer_config.adamw_weight_decay if adamw else 0.0,
             },
             {
                 "params": [self.output.weight],
                 "lr": optimizer_config.lr,
-                "weight_decay": optimizer_config.dense_weight_decay,
+                "weight_decay": dense_decay,
             },
             {
                 "params": [self.output.bias],
                 "lr": optimizer_config.lr,
-                "weight_decay": 0.0,
+                "weight_decay": optimizer_config.adamw_weight_decay if adamw else 0.0,
             },
         ]
 

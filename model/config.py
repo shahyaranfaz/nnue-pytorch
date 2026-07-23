@@ -95,6 +95,14 @@ class LossParams:
 class NNUELightningConfig(FeatureConfig):
     architecture: Literal["stockfish", "shayveri-direct"] = "stockfish"
     """Network architecture. shayveri-direct matches SHAYVERI's runtime."""
+    loss_function: Literal["stockfish", "bullet"] = "stockfish"
+    """Training objective. bullet reproduces Bullet's sigmoid MSE target."""
+    bullet_wdl: float = 0.3
+    """Game-result proportion for the Bullet-compatible target."""
+    bullet_eval_scale: float = 400.0
+    """Evaluation sigmoid scale for the Bullet-compatible target."""
+    shayveri_factorizer: bool = False
+    """Enable the training-only shared 768-feature factorizer."""
     use_fake_act_quantization: bool = True
     """Whether to use fake quantization with STE for activations during training."""
     use_fake_weight_quantization: bool = True

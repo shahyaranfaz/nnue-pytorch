@@ -73,6 +73,11 @@ def calculate_sf_loss(scorenet, score, outcome, loss_params, actual_lambda):
     return loss
 
 
+def calculate_bullet_loss(scorenet, score, outcome, wdl, eval_scale):
+    target = wdl * outcome + (1.0 - wdl) * torch.sigmoid(score / eval_scale)
+    return torch.mean((torch.sigmoid(scorenet / eval_scale) - target).square())
+
+
 class NNUE(L.LightningModule):
 
     def __init__(
@@ -91,7 +96,7 @@ class NNUE(L.LightningModule):
                 raise ValueError(
                     "shayveri-direct requires --features ShayveriKB16^"
                 )
-            self.model = ShayveriDirectModel()
+            self.model = ShayveriDirectModel(config.shayveri_factorizer)
         else:
             self.model = NNUEModel(
                 config.features,
@@ -287,17 +292,26 @@ class NNUE(L.LightningModule):
 
         scorenet = scorenet * self.model.quantization.nnue2score
 
-        actual_lambda = self.lambda_scheduler(
-            loss_params=self.config.loss_params,
-            current_epoch=self.current_epoch,
-            max_epoch=self.max_epoch,
-            is_training=self.training,
-            scorenet=scorenet
-        )
+        if self.config.loss_function == "bullet":
+            sf_loss = calculate_bullet_loss(
+                scorenet,
+                score,
+                outcome,
+                self.config.bullet_wdl,
+                self.config.bullet_eval_scale,
+            )
+        else:
+            actual_lambda = self.lambda_scheduler(
+                loss_params=self.config.loss_params,
+                current_epoch=self.current_epoch,
+                max_epoch=self.max_epoch,
+                is_training=self.training,
+                scorenet=scorenet
+            )
 
-        sf_loss = calculate_sf_loss(
-            scorenet, score, outcome, self.config.loss_params, actual_lambda
-        )
+            sf_loss = calculate_sf_loss(
+                scorenet, score, outcome, self.config.loss_params, actual_lambda
+            )
 
         self.loss_metrics[f"{loss_type}_epoch"].update(sf_loss)
         self.log(

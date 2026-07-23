@@ -3,11 +3,12 @@ from typing import Literal
 
 from .rangerlite_wrapper import RangerLiteConfig, RangerLiteWrapper
 from .schedulefree_wrapper import ScheduleFreeConfig, ScheduleFreeWrapper
+from .adamw_wrapper import AdamWWrapper
 
 
 @dataclass(kw_only=True)
 class OptimizerConfig(RangerLiteConfig, ScheduleFreeConfig):
-    optimizer_name: Literal["schedulefree", "ranger21", "rangerlite"] = "rangerlite"
+    optimizer_name: Literal["schedulefree", "ranger21", "rangerlite", "adamw"] = "rangerlite"
     """Which optimizer to use. Note that ranger21 is a specific configuration of rangerlite emulating ranger21 behaviour with legacy_mode=True."""
 
     ft_weight_decay: float = 0.0
@@ -22,6 +23,15 @@ class OptimizerConfig(RangerLiteConfig, ScheduleFreeConfig):
     lr: float = 8.75e-4
     """Initial learning rate."""
 
+    adamw_final_lr: float = 1.0e-5
+    """Final learning rate for AdamW cosine decay."""
+
+    adamw_epochs: int = 20
+    """Number of epochs in the AdamW cosine schedule."""
+
+    adamw_weight_decay: float = 0.01
+    """Decoupled weight decay used by the Bullet-compatible AdamW."""
+
     def get_optimizer_wrapper(self):
         optimizer_name = self.optimizer_name.lower().strip()
         if optimizer_name == "schedulefree":
@@ -30,9 +40,11 @@ class OptimizerConfig(RangerLiteConfig, ScheduleFreeConfig):
             wrapper = RangerLiteWrapper(self, legacy_mode=True)
         elif optimizer_name == "rangerlite":
             wrapper = RangerLiteWrapper(self, legacy_mode=False)
+        elif optimizer_name == "adamw":
+            wrapper = AdamWWrapper(self)
         else:
             raise ValueError(
-                f"Unknown optimizer_name: '{optimizer_name}'. Expected 'schedulefree', 'ranger21' or 'rangerlite'."
+                f"Unknown optimizer_name: '{optimizer_name}'."
             )
 
         info_str = f"[OptimizerConfig] Using {optimizer_name} optimizer with lr: {self.lr}"

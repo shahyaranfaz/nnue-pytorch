@@ -3,6 +3,7 @@ import struct
 import torch
 
 from model.shayveri_model import ShayveriDirectModel
+from model.lightning_module import calculate_bullet_loss
 from model.utils.shayveri_serialize import ShayveriNNUEWriter
 
 
@@ -44,6 +45,18 @@ def test_direct_model_selects_stm_perspective():
 
     assert torch.allclose(white, torch.tensor([[0.375]]))
     assert torch.allclose(black, torch.tensor([[0.5625]]))
+
+
+def test_bullet_loss_matches_blended_sigmoid_mse():
+    prediction = torch.tensor([[0.0], [400.0]])
+    score = torch.tensor([[400.0], [-400.0]])
+    outcome = torch.tensor([[1.0], [0.0]])
+    target = 0.3 * outcome + 0.7 * torch.sigmoid(score / 400.0)
+    expected = ((torch.sigmoid(prediction / 400.0) - target) ** 2).mean()
+    assert torch.allclose(
+        calculate_bullet_loss(prediction, score, outcome, 0.3, 400.0),
+        expected,
+    )
 
 
 def test_writer_matches_shayveri_layout_and_integer_evaluation():
