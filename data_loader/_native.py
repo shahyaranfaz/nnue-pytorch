@@ -200,8 +200,8 @@ class CDataLoaderAPI:
         ]
 
 
-type SparseBatchPtr = ctypes._Pointer[SparseBatch]
-type FenBatchPtr = ctypes._Pointer[FenBatch]
+SparseBatchPtr = ctypes.POINTER(SparseBatch)
+FenBatchPtr = ctypes.POINTER(FenBatch)
 
 try:
     c_lib = CDataLoaderAPI()

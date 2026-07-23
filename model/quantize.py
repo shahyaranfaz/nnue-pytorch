@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Optional, Callable, NotRequired, TypedDict, TYPE_CHECKING
+from typing import Optional, Callable, TypedDict, TYPE_CHECKING
+from typing_extensions import NotRequired
 
 import torch
 
