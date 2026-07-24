@@ -60,6 +60,7 @@ class FenBatchProvider:
         batch_size=None,
         config: DataloaderSkipConfig = DataloaderSkipConfig(),
         ddp_config: DataloaderDDPConfig = None,
+        skip_positions=0,
     ):
         self.filename = filename
         self.cyclic = cyclic
@@ -75,6 +76,7 @@ class FenBatchProvider:
                 cyclic,
                 config,
                 ddp_config,
+                skip_positions,
             )
         else:
             # doesnt work yet
@@ -119,6 +121,7 @@ class TrainingDataProvider:
         ddp_config: DataloaderDDPConfig = None,
         use_pinned_memory=False,
         device="cpu",
+        skip_positions=0,
     ):
         self.feature_set = feature_set.encode("utf-8")
         self.create_stream = create_stream
@@ -142,6 +145,7 @@ class TrainingDataProvider:
                 cyclic,
                 config,
                 ddp_config,
+                skip_positions,
             )
         else:
             self.stream = self.create_stream(
@@ -151,6 +155,7 @@ class TrainingDataProvider:
                 cyclic,
                 config,
                 ddp_config,
+                skip_positions,
             )
 
     def __iter__(self):
@@ -182,6 +187,7 @@ class SparseBatchProvider(TrainingDataProvider):
         ddp_config: DataloaderDDPConfig = None,
         use_pinned_memory=False,
         device="cpu",
+        skip_positions=0,
     ):
         super().__init__(
             feature_set,
@@ -197,6 +203,7 @@ class SparseBatchProvider(TrainingDataProvider):
             ddp_config,
             use_pinned_memory,
             device,
+            skip_positions,
         )
 
 
@@ -211,6 +218,7 @@ class SparseBatchDataset(torch.utils.data.IterableDataset):
         config: DataloaderSkipConfig = DataloaderSkipConfig(),
         ddp_config: DataloaderDDPConfig = None,
         use_pinned_memory=False,
+        skip_positions=0,
     ):
         super().__init__()
         self.feature_set = feature_set
@@ -222,6 +230,7 @@ class SparseBatchDataset(torch.utils.data.IterableDataset):
         self.ddp_config = ddp_config
         self.use_pinned_memory = use_pinned_memory
         self.device = "cpu"
+        self.skip_positions = skip_positions
 
     def __iter__(self):
         return SparseBatchProvider(
@@ -234,6 +243,7 @@ class SparseBatchDataset(torch.utils.data.IterableDataset):
             ddp_config=self.ddp_config,
             use_pinned_memory=self.use_pinned_memory,
             device=self.device,
+            skip_positions=self.skip_positions,
         )
 
 

@@ -8,7 +8,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data_loader.dataset import (
     FixedNumBatchesDataset,
 )
-from data_loader.stream import _get_ddp_rank_and_world_size
+from data_loader.config import DataloaderDDPConfig
+from data_loader.stream import _get_ddp_rank_and_world_size, _local_skip_positions
 
 
 class TestFixedNumBatchesDeferral(unittest.TestCase):
@@ -82,6 +83,27 @@ class TestGetDDPRankAndWorldSize(unittest.TestCase):
 
         self.assertEqual(rank, 0)
         self.assertEqual(world_size, 1)
+
+
+class TestLocalSkipPositions(unittest.TestCase):
+    def test_single_rank_gets_full_skip(self):
+        config = DataloaderDDPConfig(rank=0, world_size=1)
+        self.assertEqual(
+            _local_skip_positions(35_000_000_000, config), 35_000_000_000
+        )
+
+    def test_global_skip_is_divided_without_loss(self):
+        configs = [
+            DataloaderDDPConfig(rank=rank, world_size=4) for rank in range(4)
+        ]
+        local = [_local_skip_positions(11, config) for config in configs]
+        self.assertEqual(local, [3, 3, 3, 2])
+        self.assertEqual(sum(local), 11)
+
+    def test_negative_skip_is_rejected(self):
+        config = DataloaderDDPConfig(rank=0, world_size=1)
+        with self.assertRaises(ValueError):
+            _local_skip_positions(-1, config)
 
 
 if __name__ == "__main__":

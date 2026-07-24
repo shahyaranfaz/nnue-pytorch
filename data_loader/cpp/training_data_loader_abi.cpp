@@ -38,12 +38,13 @@ NNUE_API FenBatchStream* NNUE_CDECL create_fen_batch_stream(int                 
                                                      int                  batch_size,
                                                      bool                 cyclic,
                                                      DataloaderSkipConfig config,
-                                                     DataloaderDDPConfig  ddp_config) {
+                                                     DataloaderDDPConfig  ddp_config,
+                                                     std::uint64_t        skip_positions) {
     auto skipPredicate = make_skip_predicate(config);
     auto filenames_vec = std::vector<std::string>(filenames, filenames + num_files);
 
     return new FenBatchStream(concurrency, filenames_vec, batch_size, cyclic, skipPredicate,
-                              ddp_config.rank, ddp_config.world_size);
+                              ddp_config.rank, ddp_config.world_size, skip_positions);
 }
 
 NNUE_API NNUE_COLD void NNUE_CDECL destroy_fen_batch_stream(FenBatchStream* stream) {
@@ -57,7 +58,8 @@ NNUE_API SparseBatchStream* NNUE_CDECL create_sparse_batch_stream(const char* fe
                                                              int                  batch_size,
                                                              bool                 cyclic,
                                                              DataloaderSkipConfig config,
-                                                             DataloaderDDPConfig  ddp_config) {
+                                                             DataloaderDDPConfig  ddp_config,
+                                                             std::uint64_t        skip_positions) {
     auto skipPredicate = make_skip_predicate(config);
     auto filenames_vec = std::vector<std::string>(filenames, filenames + num_files);
 
@@ -65,7 +67,8 @@ NNUE_API SparseBatchStream* NNUE_CDECL create_sparse_batch_stream(const char* fe
     if (!feature)
         return nullptr;
     auto stream = new FeaturedBatchStream(std::move(feature), concurrency, filenames_vec, batch_size,
-                                   cyclic, skipPredicate, ddp_config.rank, ddp_config.world_size);
+                                   cyclic, skipPredicate, ddp_config.rank, ddp_config.world_size,
+                                   skip_positions);
     return reinterpret_cast<SparseBatchStream*>(stream);
 }
 

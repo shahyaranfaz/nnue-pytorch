@@ -12,6 +12,8 @@
 #include <thread>
 #include <string_view>
 #include <utility>
+#include <cstdint>
+#include <stdexcept>
 
 #include "lib/parallel_dataloader.h"
 #include "lib/nnue_training_data_stream.h"
@@ -74,9 +76,27 @@ struct Stream: AnyStream {
            bool cyclic,
            std::function<bool(const struct binpack::TrainingDataEntry&)> skipPredicate,
            int rank = 0,
-           int world_size = 1) :
+           int world_size = 1,
+           std::uint64_t skip_positions = 0) :
         m_stream(training_data::open_sfen_input_file_parallel(
-          concurrency, filenames, cyclic, skipPredicate, rank, world_size)) {}
+          concurrency, filenames, cyclic, skipPredicate, rank, world_size)) {
+        constexpr std::size_t discard_block_size = 1U << 16;
+        std::vector<struct binpack::TrainingDataEntry> discarded;
+        discarded.reserve(discard_block_size);
+
+        std::uint64_t remaining = skip_positions;
+        while (remaining > 0)
+        {
+            discarded.clear();
+            const auto count = static_cast<std::size_t>(
+              std::min<std::uint64_t>(remaining, discard_block_size));
+            m_stream->fill_threadsafe(discarded, count);
+            if (discarded.size() != count)
+                throw std::runtime_error(
+                  "Training data ended before skip_positions accepted positions were discarded");
+            remaining -= count;
+        }
+    }
 
     virtual StorageT* next() = 0;
 
@@ -95,7 +115,8 @@ struct FeaturedBatchStream final : Stream<SparseBatch> {
                         bool cyclic,
                         std::function<bool(const struct binpack::TrainingDataEntry&)> skipPredicate,
                         int rank = 0,
-                        int world_size = 1);
+                        int world_size = 1,
+                        std::uint64_t skip_positions = 0);
     ~FeaturedBatchStream() final;
 
     SparseBatch* next() override;
@@ -146,7 +167,8 @@ struct FenBatchStream final : Stream<FenBatch> {
                    bool cyclic,
                    std::function<bool(const struct binpack::TrainingDataEntry&)> skipPredicate,
                    int rank = 0,
-                   int world_size = 1);
+                   int world_size = 1,
+                   std::uint64_t skip_positions = 0);
     ~FenBatchStream() final;
 
     FenBatch* next() override;

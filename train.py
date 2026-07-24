@@ -216,6 +216,7 @@ def make_data_loaders(
     pin_memory,
     queue_size_limit,
     prefetch_device=None,
+    skip_positions=0,
 ):
     # Epoch and validation sizes are arbitrary
     features_name = feature_name
@@ -225,6 +226,7 @@ def make_data_loaders(
         batch_size,
         num_workers=num_workers,
         config=config,
+        skip_positions=skip_positions,
     )
     # num_workers has to be 0 for sparse, and 1 for dense
     # it currently cannot work in parallel mode but it shouldn't need to
@@ -243,9 +245,16 @@ def make_data_loaders(
     if val_size <= 0:
         val = None
     elif val_filenames is None:
+        val_infinite = data_loader.SparseBatchDataset(
+            features_name,
+            train_filenames,
+            batch_size,
+            config=config,
+            skip_positions=0,
+        )
         val = DataLoader(
             data_loader.FixedNumBatchesDataset(
-                train_infinite,
+                val_infinite,
                 (val_size + batch_size - 1) // batch_size,
                 pin_memory=pin_memory,
                 queue_size_limit=queue_size_limit,
@@ -261,6 +270,7 @@ def make_data_loaders(
             val_filenames,
             batch_size,
             config=config,
+            skip_positions=0,
         )
         val = DataLoader(
             data_loader.FixedNumBatchesDataset(
@@ -411,6 +421,10 @@ def main():
         print(args.dataloader_config)
         print("Using log dir {}".format(tb_logger.log_dir))
         print(f"Using {actual_workers} workers for C++ data loader.")
+        if args.skip_positions:
+            print(
+                f"Skipping {args.skip_positions} accepted, post-filter training positions before the first batch."
+            )
         if actual_threads > 0:
             print("Set torch num_threads to {} threads.".format(actual_threads))
         else:
@@ -447,6 +461,7 @@ def main():
         pin_memory=args.pin_memory and accelerator == "cuda",
         queue_size_limit=args.data_loader_queue_size,
         prefetch_device=torch.device("cuda") if accelerator == "cuda" else None,
+        skip_positions=args.skip_positions,
     )
 
     refresh_rate = max(1, (args.num_batches_per_epoch + 4) // 5)

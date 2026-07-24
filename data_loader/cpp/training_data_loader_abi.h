@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 #include "nnue_macros.h"
 #include "training_data_loader_structs.h"
@@ -29,7 +30,8 @@ NNUE_API FenBatchStream* NNUE_CDECL create_fen_batch_stream(int                 
                                         int                  batch_size,
                                         bool                 cyclic,
                                         DataloaderSkipConfig config,
-                                        DataloaderDDPConfig  ddp_config);
+                                        DataloaderDDPConfig  ddp_config,
+                                        std::uint64_t        skip_positions);
 
 NNUE_API void      NNUE_CDECL destroy_fen_batch_stream(FenBatchStream* stream);
 NNUE_API FenBatch* NNUE_CDECL fetch_next_fen_batch(FenBatchStream* stream);
@@ -42,7 +44,8 @@ NNUE_API SparseBatchStream* NNUE_CDECL create_sparse_batch_stream(const char*   
                                               int                  batch_size,
                                               bool                 cyclic,
                                               DataloaderSkipConfig config,
-                                              DataloaderDDPConfig  ddp_config);
+                                              DataloaderDDPConfig  ddp_config,
+                                              std::uint64_t        skip_positions);
 
 NNUE_API void         NNUE_CDECL destroy_sparse_batch_stream(SparseBatchStream* stream);
 NNUE_API SparseBatch* NNUE_CDECL fetch_next_sparse_batch(SparseBatchStream* stream);

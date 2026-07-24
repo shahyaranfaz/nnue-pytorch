@@ -31,6 +31,13 @@ def _to_c_str_array(str_list):
     return c_str_array
 
 
+def _local_skip_positions(skip_positions, ddp_config):
+    if skip_positions < 0:
+        raise ValueError("skip_positions must be non-negative")
+    quotient, remainder = divmod(skip_positions, ddp_config.world_size)
+    return quotient + (1 if ddp_config.rank < remainder else 0)
+
+
 def create_fen_batch_stream(
     concurrency,
     filenames: list[str],
@@ -38,6 +45,7 @@ def create_fen_batch_stream(
     cyclic,
     config: DataloaderSkipConfig,
     ddp_config: DataloaderDDPConfig = None,
+    skip_positions=0,
 ) -> ctypes.c_void_p:
     if ddp_config is None:
         rank, world_size = _get_ddp_rank_and_world_size()
@@ -51,6 +59,7 @@ def create_fen_batch_stream(
         cyclic,
         CDataloaderSkipConfig(config),
         CDataloaderDDPConfig(ddp_config),
+        _local_skip_positions(skip_positions, ddp_config),
     )
 
 
@@ -74,6 +83,7 @@ def create_sparse_batch_stream(
     cyclic,
     config: DataloaderSkipConfig,
     ddp_config: DataloaderDDPConfig = None,
+    skip_positions=0,
 ) -> ctypes.c_void_p:
     if ddp_config is None:
         rank, world_size = _get_ddp_rank_and_world_size()
@@ -88,6 +98,7 @@ def create_sparse_batch_stream(
         cyclic,
         CDataloaderSkipConfig(config),
         CDataloaderDDPConfig(ddp_config),
+        _local_skip_positions(skip_positions, ddp_config),
     )
 
 

@@ -83,6 +83,9 @@ class TrainingConfig:
     epoch_size: int = 100_000_000
     """Number of positions per epoch."""
 
+    skip_positions: int = 0
+    """Global number of accepted, post-filter training positions to discard before the first batch. In DDP this count is divided across ranks."""
+
     dataloader_config: OmitArgPrefixes[DataloaderSkipConfig] = field(
         default_factory=DataloaderSkipConfig
     )
@@ -102,6 +105,10 @@ class TrainingConfig:
         if self.max_epochs <= 0 or self.epoch_size <= 0 or self.batch_size <= 0:
             raise ValueError(
                 "Arguments `max_epochs`, `epoch_size` and `batch_size` must be positive."
+            )
+        if self.skip_positions < 0:
+            raise ValueError(
+                f"skip_positions must be non-negative, got {self.skip_positions}."
             )
         if self.check_val_every_n_epoch < 1:
             raise ValueError(
