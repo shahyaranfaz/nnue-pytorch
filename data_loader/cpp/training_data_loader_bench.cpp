@@ -241,7 +241,7 @@ void run_report(int concurrency, size_t iteration_count, size_t max_plies, int f
 
     std::unique_ptr<SparseBatchStream, SparseBatchStreamDeleter> stream(
         create_sparse_batch_stream("Full_Threats+HalfKAv2_hm", concurrency, file_count, files,
-            batch_size, cyclic, skip_config, ddp_config));
+            batch_size, cyclic, skip_config, ddp_config, 0));
 
     DistributionReport report(max_plies);
 
@@ -340,7 +340,7 @@ void run_bench(int concurrency, size_t iteration_count, int do_cache_files, int 
 
     std::unique_ptr<SparseBatchStream, SparseBatchStreamDeleter> stream(
         create_sparse_batch_stream("Full_Threats+HalfKAv2_hm", concurrency, file_count, files,
-            batch_size, cyclic, skip_config, ddp_config));
+            batch_size, cyclic, skip_config, ddp_config, 0));
 
     size_t warmup_iterations = 5;
     for (size_t i = 1; i <= warmup_iterations; ++i) {
