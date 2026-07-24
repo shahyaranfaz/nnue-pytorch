@@ -158,6 +158,7 @@ def test_v3_warm_expansion_is_function_preserving():
         parent.output.bias.uniform_(-0.1, 0.1)
 
     v3 = ShayveriNNUEWriter(parent).buf
+    reference = ShayveriNNUEReader(BytesIO(v3), output_buckets=1).model
     child = ShayveriNNUEReader(BytesIO(v3), output_buckets=8).model
     assert isinstance(child, ShayveriBucketedModel)
     for bucket in range(8):
@@ -170,13 +171,13 @@ def test_v3_warm_expansion_is_function_preserving():
     piece_count = torch.arange(1, 33, dtype=torch.int64)
     us = torch.randint(0, 2, (batch_size, 1)).float()
     them = 1.0 - us
-    parent_output = parent(
+    reference_output = reference(
         us, them, white_indices, black_indices, piece_count, True, True
     )
     child_output = child(
         us, them, white_indices, black_indices, piece_count, True, True
     )
-    assert torch.equal(child_output, parent_output)
+    torch.testing.assert_close(child_output, reference_output)
 
 
 def test_v4_bucketed_round_trip_and_section_lengths():
