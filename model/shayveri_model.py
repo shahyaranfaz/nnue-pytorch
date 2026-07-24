@@ -42,14 +42,18 @@ class ShayveriDirectModel(nn.Module):
     feature_name = "ShayveriKB16^"
     input_feature_name = "ShayveriKB16"
 
-    def __init__(self, use_factorizer: bool = False):
+    def __init__(self, use_factorizer: bool = False, output_buckets: int = 1):
         super().__init__()
+        if output_buckets not in (1, 8):
+            raise ValueError("SHAYVERI output_buckets must be 1 or 8")
+        self.output_buckets = output_buckets
+        self.num_ls_buckets = output_buckets
         self.quantization = _ShayveriQuantization()
         self.input = ShayveriKB16(self.L1)
         self.input.bias = nn.Parameter(torch.zeros(self.L1, dtype=torch.float32))
         self.input.init_weights(0, self.quantization.nnue2score)
         self.input.virtual_weight.requires_grad_(use_factorizer)
-        self.output = nn.Linear(self.L1 * 2, 1)
+        self.output = nn.Linear(self.L1 * 2, output_buckets)
         self.feature_hash = self.input.HASH
 
     @torch.no_grad()
@@ -110,7 +114,6 @@ class ShayveriDirectModel(nn.Module):
         fake_quantize_acts: bool = True,
         fake_quantize_weights: bool = True,
     ) -> torch.Tensor:
-        del piece_count
         weight = self.input.merged_weight()
         bias = self.input.bias
         output_weight = self.output.weight
@@ -138,4 +141,18 @@ class ShayveriDirectModel(nn.Module):
         stm = _screlu(stm, fake_quantize_acts)
         nstm = _screlu(nstm, fake_quantize_acts)
         hidden = torch.cat((stm, nstm), dim=1)
-        return nn.functional.linear(hidden, output_weight, output_bias)
+        outputs = nn.functional.linear(hidden, output_weight, output_bias)
+        if self.output_buckets == 1:
+            return outputs
+
+        bucket = ((piece_count - 1) // 4).clamp(0, self.output_buckets - 1)
+        return outputs.gather(1, bucket.reshape(-1, 1))
+
+
+class ShayveriBucketedModel(ShayveriDirectModel):
+    """S1a SHAYVERI model with eight material-dependent linear heads."""
+
+    num_ls_buckets = 8
+
+    def __init__(self, use_factorizer: bool = False):
+        super().__init__(use_factorizer=use_factorizer, output_buckets=8)

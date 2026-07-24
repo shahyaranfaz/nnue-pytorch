@@ -3,7 +3,7 @@ from io import BytesIO
 
 import torch
 
-from model.shayveri_model import ShayveriDirectModel
+from model.shayveri_model import ShayveriBucketedModel, ShayveriDirectModel
 from model.lightning_module import calculate_bullet_loss
 from model.utils.shayveri_serialize import ShayveriNNUEReader, ShayveriNNUEWriter
 
@@ -118,6 +118,90 @@ def test_reader_round_trip_is_exact_and_enables_zeroed_factorizer():
         use_factorizer=True,
     ).model
 
+    assert loaded.input.virtual_weight.requires_grad
+    assert torch.count_nonzero(loaded.input.virtual_weight) == 0
+    assert ShayveriNNUEWriter(loaded).buf == original
+
+
+def test_bucketed_model_selects_material_head():
+    model = ShayveriBucketedModel()
+    with torch.no_grad():
+        model.input.weight.zero_()
+        model.input.virtual_weight.zero_()
+        model.input.bias.zero_()
+        model.output.weight.zero_()
+        model.output.bias.copy_(torch.arange(8, dtype=torch.float32))
+
+    piece_count = torch.tensor(
+        [1, 4, 5, 8, 9, 12, 13, 16, 17, 20, 21, 24, 25, 28, 29, 32],
+        dtype=torch.int64,
+    )
+    batch_size = piece_count.numel()
+    output = model(
+        torch.ones(batch_size, 1),
+        torch.zeros(batch_size, 1),
+        torch.full((batch_size, 1), -1, dtype=torch.int32),
+        torch.full((batch_size, 1), -1, dtype=torch.int32),
+        piece_count,
+        False,
+        False,
+    )
+    assert torch.equal(output.reshape(-1), torch.arange(8).repeat_interleave(2))
+
+
+def test_v3_warm_expansion_is_function_preserving():
+    parent = ShayveriDirectModel()
+    with torch.no_grad():
+        parent.input.weight.uniform_(-0.1, 0.1)
+        parent.input.bias.uniform_(-0.1, 0.1)
+        parent.output.weight.uniform_(-0.1, 0.1)
+        parent.output.bias.uniform_(-0.1, 0.1)
+
+    v3 = ShayveriNNUEWriter(parent).buf
+    child = ShayveriNNUEReader(BytesIO(v3), output_buckets=8).model
+    assert isinstance(child, ShayveriBucketedModel)
+    for bucket in range(8):
+        assert torch.equal(child.output.weight[bucket], child.output.weight[0])
+        assert torch.equal(child.output.bias[bucket], child.output.bias[0])
+
+    batch_size = 32
+    white_indices = torch.randint(0, 12288, (batch_size, 24), dtype=torch.int32)
+    black_indices = torch.randint(0, 12288, (batch_size, 24), dtype=torch.int32)
+    piece_count = torch.arange(1, 33, dtype=torch.int64)
+    us = torch.randint(0, 2, (batch_size, 1)).float()
+    them = 1.0 - us
+    parent_output = parent(
+        us, them, white_indices, black_indices, piece_count, True, True
+    )
+    child_output = child(
+        us, them, white_indices, black_indices, piece_count, True, True
+    )
+    assert torch.equal(child_output, parent_output)
+
+
+def test_v4_bucketed_round_trip_and_section_lengths():
+    model = ShayveriBucketedModel(use_factorizer=True)
+    with torch.no_grad():
+        model.input.weight.uniform_(-0.1, 0.1)
+        model.input.bias.uniform_(-0.1, 0.1)
+        model.output.weight.uniform_(-0.1, 0.1)
+        model.output.bias.uniform_(-0.1, 0.1)
+
+    original = ShayveriNNUEWriter(model).buf
+    header = struct.unpack_from("<10I", original)
+    assert header[:6] == (0x4E4E5545, 4, 16, 512, 8, 1)
+    assert header[6:] == (
+        12288 * 512 * 2,
+        512 * 2,
+        8 * 1024 * 2,
+        8 * 4,
+    )
+    assert len(original) == 40 + sum(header[6:])
+
+    loaded = ShayveriNNUEReader(
+        BytesIO(original), use_factorizer=True
+    ).model
+    assert isinstance(loaded, ShayveriBucketedModel)
     assert loaded.input.virtual_weight.requires_grad
     assert torch.count_nonzero(loaded.input.virtual_weight) == 0
     assert ShayveriNNUEWriter(loaded).buf == original

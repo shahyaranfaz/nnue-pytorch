@@ -4,7 +4,7 @@ from .optimizers import OptimizerConfig, RangerLiteWrapper, ScheduleFreeWrapper
 
 from .lightning_module import NNUE
 from .model import NNUEModel
-from .shayveri_model import ShayveriDirectModel
+from .shayveri_model import ShayveriBucketedModel, ShayveriDirectModel
 from .modules import (
     add_feature_args,
     get_feature_cls,
@@ -33,6 +33,7 @@ __all__ = [
     "NNUE",
     "NNUEModel",
     "ShayveriDirectModel",
+    "ShayveriBucketedModel",
     "RangerLiteWrapper",
     "ScheduleFreeWrapper",
     "load_model",

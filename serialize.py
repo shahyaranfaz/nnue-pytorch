@@ -102,10 +102,19 @@ def main():
             nnue = M.NNUE(
                 config=nnue_lightning_config,
             )
-            if nnue_lightning_config.architecture == "shayveri-direct":
+            if nnue_lightning_config.architecture in (
+                "shayveri-direct",
+                "shayveri-bucketed",
+            ):
                 reader = M.ShayveriNNUEReader(
                     f,
                     use_factorizer=nnue_lightning_config.shayveri_factorizer,
+                    output_buckets=(
+                        8
+                        if nnue_lightning_config.architecture
+                        == "shayveri-bucketed"
+                        else 1
+                    ),
                 )
             else:
                 reader = M.NNUEReader(

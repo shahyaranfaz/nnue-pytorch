@@ -6,7 +6,7 @@ from torchmetrics import MeanMetric, MetricCollection
 
 from .config import NNUELightningConfig
 from .model import NNUEModel
-from .shayveri_model import ShayveriDirectModel
+from .shayveri_model import ShayveriBucketedModel, ShayveriDirectModel
 from .lambda_utils import LambdaController
 
 
@@ -91,12 +91,17 @@ class NNUE(L.LightningModule):
     ):
         super().__init__()
 
-        if config.architecture == "shayveri-direct":
+        if config.architecture in ("shayveri-direct", "shayveri-bucketed"):
             if config.features != "ShayveriKB16^":
                 raise ValueError(
-                    "shayveri-direct requires --features ShayveriKB16^"
+                    f"{config.architecture} requires --features ShayveriKB16^"
                 )
-            self.model = ShayveriDirectModel(config.shayveri_factorizer)
+            model_type = (
+                ShayveriBucketedModel
+                if config.architecture == "shayveri-bucketed"
+                else ShayveriDirectModel
+            )
+            self.model = model_type(config.shayveri_factorizer)
         else:
             self.model = NNUEModel(
                 config.features,

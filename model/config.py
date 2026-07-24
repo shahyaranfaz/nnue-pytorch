@@ -93,8 +93,10 @@ class LossParams:
 
 @dataclass(kw_only=True)
 class NNUELightningConfig(FeatureConfig):
-    architecture: Literal["stockfish", "shayveri-direct"] = "stockfish"
-    """Network architecture. shayveri-direct matches SHAYVERI's runtime."""
+    architecture: Literal[
+        "stockfish", "shayveri-direct", "shayveri-bucketed"
+    ] = "stockfish"
+    """Network architecture. shayveri-bucketed is S1a with eight material heads."""
     loss_function: Literal["stockfish", "bullet"] = "stockfish"
     """Training objective. bullet reproduces Bullet's sigmoid MSE target."""
     bullet_wdl: float = 0.3
