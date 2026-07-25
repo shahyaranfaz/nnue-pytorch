@@ -3,9 +3,14 @@ import argparse
 import glob
 import math
 import os
+import sys
 
 import torch
 
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 RUN_ROOT = "/mnt/c/bullet_data/v2.9/runs/net2"
 WARM_MODEL = (
