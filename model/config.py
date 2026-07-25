@@ -104,7 +104,7 @@ class NNUELightningConfig(FeatureConfig):
     bullet_eval_scale: float = 400.0
     """Evaluation sigmoid scale for the Bullet-compatible target."""
     shayveri_factorizer: bool = False
-    """Enable the training-only shared 768-feature factorizer."""
+    """Enable SHAYVERI training-only input and bucketed-output factorizers."""
     use_fake_act_quantization: bool = True
     """Whether to use fake quantization with STE for activations during training."""
     use_fake_weight_quantization: bool = True

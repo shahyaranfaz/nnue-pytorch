@@ -54,7 +54,26 @@ class ShayveriDirectModel(nn.Module):
         self.input.init_weights(0, self.quantization.nnue2score)
         self.input.virtual_weight.requires_grad_(use_factorizer)
         self.output = nn.Linear(self.L1 * 2, output_buckets)
+        self.output_factorizer = (
+            nn.Linear(self.L1 * 2, 1)
+            if use_factorizer and output_buckets > 1
+            else None
+        )
+        if self.output_factorizer is not None:
+            with torch.no_grad():
+                self.output_factorizer.weight.zero_()
+                self.output_factorizer.bias.zero_()
         self.feature_hash = self.input.HASH
+
+    def merged_output_weight(self) -> torch.Tensor:
+        if self.output_factorizer is None:
+            return self.output.weight
+        return self.output.weight + self.output_factorizer.weight
+
+    def merged_output_bias(self) -> torch.Tensor:
+        if self.output_factorizer is None:
+            return self.output.bias
+        return self.output.bias + self.output_factorizer.bias
 
     @torch.no_grad()
     def clip_weights(self, include_input: bool):
@@ -81,7 +100,7 @@ class ShayveriDirectModel(nn.Module):
         input_weights = [self.input.weight]
         if self.input.virtual_weight.requires_grad:
             input_weights.append(self.input.virtual_weight)
-        return [
+        groups = [
             {
                 "params": input_weights,
                 "lr": optimizer_config.lr,
@@ -103,6 +122,28 @@ class ShayveriDirectModel(nn.Module):
                 "weight_decay": optimizer_config.adamw_weight_decay if adamw else 0.0,
             },
         ]
+        if self.output_factorizer is not None:
+            groups.extend(
+                (
+                    {
+                        "params": [self.output_factorizer.weight],
+                        "lr": optimizer_config.lr,
+                        "weight_decay": (
+                            optimizer_config.adamw_weight_decay
+                            if adamw
+                            else optimizer_config.factorized_weight_decay
+                        ),
+                    },
+                    {
+                        "params": [self.output_factorizer.bias],
+                        "lr": optimizer_config.lr,
+                        "weight_decay": (
+                            optimizer_config.adamw_weight_decay if adamw else 0.0
+                        ),
+                    },
+                )
+            )
+        return groups
 
     def forward(
         self,
@@ -116,8 +157,8 @@ class ShayveriDirectModel(nn.Module):
     ) -> torch.Tensor:
         weight = self.input.merged_weight()
         bias = self.input.bias
-        output_weight = self.output.weight
-        output_bias = self.output.bias
+        output_weight = self.merged_output_weight()
+        output_bias = self.merged_output_bias()
 
         if fake_quantize_weights:
             weight = _fake_quantize(weight, 255)
@@ -150,7 +191,7 @@ class ShayveriDirectModel(nn.Module):
 
 
 class ShayveriBucketedModel(ShayveriDirectModel):
-    """S1a SHAYVERI model with eight material-dependent linear heads."""
+    """S1a model with eight material heads and an optional shared factorizer."""
 
     num_ls_buckets = 8
 

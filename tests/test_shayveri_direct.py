@@ -159,8 +159,13 @@ def test_v3_warm_expansion_is_function_preserving():
 
     v3 = ShayveriNNUEWriter(parent).buf
     reference = ShayveriNNUEReader(BytesIO(v3), output_buckets=1).model
-    child = ShayveriNNUEReader(BytesIO(v3), output_buckets=8).model
+    child = ShayveriNNUEReader(
+        BytesIO(v3), use_factorizer=True, output_buckets=8
+    ).model
     assert isinstance(child, ShayveriBucketedModel)
+    assert child.output_factorizer is not None
+    assert torch.count_nonzero(child.output_factorizer.weight) == 0
+    assert torch.count_nonzero(child.output_factorizer.bias) == 0
     for bucket in range(8):
         assert torch.equal(child.output.weight[bucket], child.output.weight[0])
         assert torch.equal(child.output.bias[bucket], child.output.bias[0])
@@ -178,6 +183,54 @@ def test_v3_warm_expansion_is_function_preserving():
         us, them, white_indices, black_indices, piece_count, True, True
     )
     torch.testing.assert_close(child_output, reference_output)
+
+
+def test_bucketed_output_factorizer_updates_shared_and_bucket_parameters():
+    model = ShayveriBucketedModel(use_factorizer=True)
+    assert model.output_factorizer is not None
+
+    batch_size = 8
+    output = model(
+        torch.ones(batch_size, 1),
+        torch.zeros(batch_size, 1),
+        torch.randint(0, 12288, (batch_size, 24), dtype=torch.int32),
+        torch.randint(0, 12288, (batch_size, 24), dtype=torch.int32),
+        torch.arange(1, 33, 4, dtype=torch.int64),
+        False,
+        False,
+    )
+    output.sum().backward()
+
+    assert torch.count_nonzero(model.output_factorizer.weight.grad) > 0
+    assert torch.count_nonzero(model.output_factorizer.bias.grad) > 0
+    for bucket in range(8):
+        assert torch.count_nonzero(model.output.weight.grad[bucket]) > 0
+        assert model.output.bias.grad[bucket] != 0
+
+
+def test_bucketed_output_factorizer_is_folded_during_serialization():
+    model = ShayveriBucketedModel(use_factorizer=True)
+    assert model.output_factorizer is not None
+    with torch.no_grad():
+        model.input.weight.zero_()
+        model.input.virtual_weight.zero_()
+        model.input.bias.zero_()
+        model.output.weight.zero_()
+        model.output.bias.zero_()
+        model.output_factorizer.weight.fill_(7 / 255)
+        model.output_factorizer.bias.fill_(1234 / (255 * 255))
+
+    serialized = ShayveriNNUEWriter(model).buf
+    loaded = ShayveriNNUEReader(BytesIO(serialized)).model
+    for bucket in range(8):
+        torch.testing.assert_close(
+            loaded.output.weight[bucket],
+            torch.full((1024,), 7 / 255),
+        )
+        torch.testing.assert_close(
+            loaded.output.bias[bucket],
+            torch.tensor(1234 / (255 * 255)),
+        )
 
 
 def test_v4_bucketed_round_trip_and_section_lengths():
@@ -205,4 +258,7 @@ def test_v4_bucketed_round_trip_and_section_lengths():
     assert isinstance(loaded, ShayveriBucketedModel)
     assert loaded.input.virtual_weight.requires_grad
     assert torch.count_nonzero(loaded.input.virtual_weight) == 0
+    assert loaded.output_factorizer is not None
+    assert torch.count_nonzero(loaded.output_factorizer.weight) == 0
+    assert torch.count_nonzero(loaded.output_factorizer.bias) == 0
     assert ShayveriNNUEWriter(loaded).buf == original

@@ -42,13 +42,16 @@ class ShayveriNNUEWriter:
             model.input.bias, QUANT, torch.int16, "feature bias"
         )
         output_weights = _quantize(
-            model.output.weight.reshape(-1),
+            model.merged_output_weight().reshape(-1),
             QUANT,
             torch.int16,
             "output weights",
         )
         output_bias = _quantize(
-            model.output.bias, QUANT * QUANT, torch.int32, "output bias"
+            model.merged_output_bias(),
+            QUANT * QUANT,
+            torch.int32,
+            "output bias",
         )
 
         feature_weights_bytes = feature_weights.numpy().tobytes()

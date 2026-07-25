@@ -80,10 +80,20 @@ def main() -> None:
     print(f"epoch={checkpoint.get('epoch')}")
     print(f"global_step={checkpoint.get('global_step')}")
 
-    output_weight = state["model.output.weight"]
-    output_bias = state["model.output.bias"]
-    warm_output_weight = warm["model.output.weight"]
-    warm_output_bias = warm["model.output.bias"]
+    output_factorizer_weight = state["model.output_factorizer.weight"]
+    output_factorizer_bias = state["model.output_factorizer.bias"]
+    warm_output_factorizer_weight = warm["model.output_factorizer.weight"]
+    warm_output_factorizer_bias = warm["model.output_factorizer.bias"]
+    output_weight = (
+        state["model.output.weight"] + output_factorizer_weight
+    )
+    output_bias = state["model.output.bias"] + output_factorizer_bias
+    warm_output_weight = (
+        warm["model.output.weight"] + warm_output_factorizer_weight
+    )
+    warm_output_bias = (
+        warm["model.output.bias"] + warm_output_factorizer_bias
+    )
     if tuple(output_weight.shape) != (8, 1024):
         raise SystemExit(
             f"Unexpected output weight shape: {tuple(output_weight.shape)}"
@@ -113,6 +123,18 @@ def main() -> None:
         "model.input.virtual_weight",
     ):
         tensor_stats(name, state[name], warm[name])
+
+    print("\nShared-output movement:")
+    tensor_stats(
+        "model.output_factorizer.weight",
+        output_factorizer_weight,
+        warm_output_factorizer_weight,
+    )
+    tensor_stats(
+        "model.output_factorizer.bias",
+        output_factorizer_bias,
+        warm_output_factorizer_bias,
+    )
 
     print("\nHead specialization:")
     centered = output_weight.float() - output_weight.float().mean(dim=0)
