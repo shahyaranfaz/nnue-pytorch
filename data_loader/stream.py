@@ -89,7 +89,7 @@ def create_sparse_batch_stream(
         rank, world_size = _get_ddp_rank_and_world_size()
         ddp_config = DataloaderDDPConfig(rank=rank, world_size=world_size)
 
-    return c_lib.dll.create_sparse_batch_stream(
+    result = c_lib.dll.create_sparse_batch_stream(
         feature_set,
         concurrency,
         len(filenames),
@@ -100,6 +100,11 @@ def create_sparse_batch_stream(
         CDataloaderDDPConfig(ddp_config),
         _local_skip_positions(skip_positions, ddp_config),
     )
+    if not result:
+        raise ValueError(
+            f"Native data loader rejected feature component: {feature_set!r}"
+        )
+    return result
 
 
 def destroy_sparse_batch_stream(stream: ctypes.c_void_p):

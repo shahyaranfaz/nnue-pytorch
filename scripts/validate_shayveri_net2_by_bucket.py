@@ -122,7 +122,7 @@ def main() -> None:
     lambda_ = 0.74
 
     provider = SparseBatchProvider(
-        "ShayveriKB16^",
+        "ShayveriKB16",
         [DIAGNOSTIC_FILE],
         BATCH_SIZE,
         cyclic=True,
