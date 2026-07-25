@@ -53,6 +53,9 @@ def weighted_sf_loss(
     loss_params,
     lambda_: float,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    scorenet = scorenet.reshape(-1)
+    score = score.reshape(-1)
+    outcome = outcome.reshape(-1)
     score = remap_tablebase_score(
         score,
         base=loss_params.tb_remap_base,
