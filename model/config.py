@@ -81,11 +81,6 @@ class LossParams:
             raise ValueError(
                 "Either both or none of start_lambda and end_lambda must be specified."
             )
-        if self.start_lambda is None:
-            self.start_lambda = self.lambda_
-        if self.end_lambda is None:
-            self.end_lambda = self.lambda_
-
         if self.jitter_decay_lambda_batch < 0.0 or self.jitter_decay_lambda_batch >= 1.0:
             raise ValueError("jitter_decay_lambda_batch must be in the range [0.0, 1.0).")
         if self.jitter_lambda_batch < 0.0 or self.jitter_lambda_sample < 0.0:
