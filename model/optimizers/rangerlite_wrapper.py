@@ -1,3 +1,5 @@
+import math
+
 import lightning as L
 import torch
 
@@ -21,6 +23,15 @@ class RangerLiteConfig:
     one_cycle_final_div: float = 50
     """Final lr div factor when using One Cycle LR scheduler."""
 
+    one_cycle_refinement_steps: int = 0
+    """Optional cosine-refinement steps after OneCycle, using the same optimizer."""
+
+    one_cycle_refinement_lr: float = 0.0
+    """Learning rate applied once at the OneCycle-to-refinement boundary."""
+
+    one_cycle_refinement_final_lr: float = 0.0
+    """Final learning rate of the optional cosine-refinement phase."""
+
     pnm_active: bool = True
     """Whether to activate Positive Negative Momentum."""
 
@@ -38,6 +49,80 @@ class SafeOneCycleLR(torch.optim.lr_scheduler.OneCycleLR):
         if self.last_epoch < self.total_steps - 1:
             super().step(epoch)
 
+
+class OneCycleCosineRefinementLR(SafeOneCycleLR):
+    """OneCycle followed by a low-LR cosine refinement without an optimizer reset.
+
+    The OneCycle prefix deliberately uses PyTorch's implementation unchanged.
+    After its final scheduled update, the next batch starts at ``refinement_lr``
+    and cosine-anneals to ``refinement_final_lr`` over ``refinement_steps``.
+    """
+
+    def __init__(
+        self,
+        optimizer,
+        *,
+        max_lr,
+        one_cycle_steps,
+        refinement_steps,
+        refinement_lr,
+        refinement_final_lr,
+        div_factor,
+        final_div_factor,
+        pct_start,
+    ):
+        if one_cycle_steps <= 0:
+            raise ValueError("one_cycle_steps must be positive")
+        if refinement_steps < 2:
+            raise ValueError("refinement_steps must be at least 2")
+        if refinement_lr <= 0.0:
+            raise ValueError("refinement_lr must be positive")
+        if not 0.0 <= refinement_final_lr <= refinement_lr:
+            raise ValueError(
+                "refinement_final_lr must be between 0 and refinement_lr"
+            )
+
+        self.one_cycle_steps = one_cycle_steps
+        self.refinement_steps = refinement_steps
+        self.refinement_lr = refinement_lr
+        self.refinement_final_lr = refinement_final_lr
+        super().__init__(
+            optimizer,
+            max_lr=max_lr,
+            total_steps=one_cycle_steps,
+            div_factor=div_factor,
+            final_div_factor=final_div_factor,
+            pct_start=pct_start,
+            cycle_momentum=False,
+        )
+
+    def step(self, epoch=None):
+        if self.last_epoch < self.one_cycle_steps - 1:
+            return super().step(epoch)
+
+        if epoch is not None:
+            raise ValueError(
+                "OneCycleCosineRefinementLR does not support an explicit epoch"
+            )
+
+        final_epoch = self.one_cycle_steps + self.refinement_steps - 1
+        if self.last_epoch >= final_epoch:
+            return
+
+        self._step_count += 1
+        self.last_epoch += 1
+        refinement_step = self.last_epoch - self.one_cycle_steps
+        progress = refinement_step / (self.refinement_steps - 1)
+        cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+        lr = self.refinement_final_lr + (
+            self.refinement_lr - self.refinement_final_lr
+        ) * cosine
+
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+        self._last_lr = [lr] * len(self.optimizer.param_groups)
+
+
 class RangerLiteWrapper:
     def __init__(
         self,
@@ -53,6 +138,9 @@ class RangerLiteWrapper:
         self.one_cycle_warmup_pct = config.one_cycle_warmup_pct
         self.one_cycle_start_div = config.one_cycle_start_div
         self.one_cycle_final_div = config.one_cycle_final_div
+        self.one_cycle_refinement_steps = config.one_cycle_refinement_steps
+        self.one_cycle_refinement_lr = config.one_cycle_refinement_lr
+        self.one_cycle_refinement_final_lr = config.one_cycle_refinement_final_lr
         self.legacy_mode = legacy_mode
         self.needs_train_flip = True
 
@@ -80,15 +168,28 @@ class RangerLiteWrapper:
 
         else:
             LRs = [group["lr"] for group in train_params]
-            one_cycle_scheduler = SafeOneCycleLR(
-                self.optimizer,
-                max_lr=LRs,
-                total_steps=self.cycle_steps,
-                div_factor=self.one_cycle_start_div,
-                final_div_factor=self.one_cycle_final_div,
-                pct_start=self.one_cycle_warmup_pct,
-                cycle_momentum=False,
-            )
+            if self.one_cycle_refinement_steps > 0:
+                one_cycle_scheduler = OneCycleCosineRefinementLR(
+                    self.optimizer,
+                    max_lr=LRs,
+                    one_cycle_steps=self.cycle_steps,
+                    refinement_steps=self.one_cycle_refinement_steps,
+                    refinement_lr=self.one_cycle_refinement_lr,
+                    refinement_final_lr=self.one_cycle_refinement_final_lr,
+                    div_factor=self.one_cycle_start_div,
+                    final_div_factor=self.one_cycle_final_div,
+                    pct_start=self.one_cycle_warmup_pct,
+                )
+            else:
+                one_cycle_scheduler = SafeOneCycleLR(
+                    self.optimizer,
+                    max_lr=LRs,
+                    total_steps=self.cycle_steps,
+                    div_factor=self.one_cycle_start_div,
+                    final_div_factor=self.one_cycle_final_div,
+                    pct_start=self.one_cycle_warmup_pct,
+                    cycle_momentum=False,
+                )
             scheduler = {"scheduler": one_cycle_scheduler, "interval": "step"}
 
         return [self.optimizer], [scheduler]
