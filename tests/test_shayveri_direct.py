@@ -48,6 +48,24 @@ def test_direct_model_selects_stm_perspective():
     assert torch.allclose(black, torch.tensor([[0.5625]]))
 
 
+def test_legacy_pickled_direct_model_gains_post_net1_defaults():
+    model = ShayveriDirectModel(use_factorizer=True)
+    del model.output_factorizer
+    del model.output_buckets
+    del model.num_ls_buckets
+
+    checkpoint = BytesIO()
+    torch.save(model, checkpoint)
+    checkpoint.seek(0)
+    loaded = torch.load(checkpoint, weights_only=False)
+
+    assert loaded.output_buckets == 1
+    assert loaded.num_ls_buckets == 1
+    assert loaded.output_factorizer is None
+    assert loaded.merged_output_weight() is loaded.output.weight
+    assert loaded.merged_output_bias() is loaded.output.bias
+
+
 def test_bullet_loss_matches_blended_sigmoid_mse():
     prediction = torch.tensor([[0.0], [400.0]])
     score = torch.tensor([[400.0], [-400.0]])

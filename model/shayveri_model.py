@@ -65,6 +65,19 @@ class ShayveriDirectModel(nn.Module):
                 self.output_factorizer.bias.zero_()
         self.feature_hash = self.input.HASH
 
+    def _upgrade_legacy_state(self) -> None:
+        """Fill attributes absent from pre-Net2 pickled direct models."""
+        if not hasattr(self, "output_buckets"):
+            self.output_buckets = self.output.out_features
+        if not hasattr(self, "num_ls_buckets"):
+            self.num_ls_buckets = self.output_buckets
+        if not hasattr(self, "output_factorizer"):
+            self.output_factorizer = None
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        self._upgrade_legacy_state()
+
     def merged_output_weight(self) -> torch.Tensor:
         if self.output_factorizer is None:
             return self.output.weight
