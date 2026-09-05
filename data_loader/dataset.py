@@ -136,6 +136,7 @@ class TrainingDataProvider:
         self.config = config
         self.use_pinned_memory = use_pinned_memory
         self.device = device
+        self.stream = None
 
         if batch_size:
             self.stream = self.create_stream(
@@ -173,7 +174,8 @@ class TrainingDataProvider:
             raise StopIteration
 
     def __del__(self):
-        self.destroy_stream(self.stream)
+        if self.stream is not None:
+            self.destroy_stream(self.stream)
 
 
 class SparseBatchProvider(TrainingDataProvider):
