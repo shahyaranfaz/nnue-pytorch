@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 
 from . import stream
 from .config import DataloaderSkipConfig, DataloaderDDPConfig
+from .mix_schedule import secondary_batch, source_batches_before
 
 
 def _recursive_pin(obj):
@@ -245,6 +246,71 @@ class SparseBatchDataset(torch.utils.data.IterableDataset):
             device=self.device,
             skip_positions=self.skip_positions,
         )
+
+
+class DeterministicBatchMixDataset(torch.utils.data.IterableDataset):
+    """Mix two native sparse streams at an exact deterministic batch ratio."""
+
+    def __init__(
+        self,
+        feature_set: str,
+        primary_filenames: list[str],
+        secondary_filenames: list[str],
+        batch_size: int,
+        secondary_batches: int,
+        cycle_batches: int,
+        cyclic=True,
+        num_workers=1,
+        config: DataloaderSkipConfig = DataloaderSkipConfig(),
+        skip_positions=0,
+    ):
+        super().__init__()
+        if skip_positions < 0:
+            raise ValueError("skip_positions must be non-negative")
+        self.feature_set = feature_set
+        self.primary_filenames = primary_filenames
+        self.secondary_filenames = secondary_filenames
+        self.batch_size = batch_size
+        self.secondary_batches = secondary_batches
+        self.cycle_batches = cycle_batches
+        self.cyclic = cyclic
+        self.num_workers = num_workers
+        self.config = config
+        self.skip_positions = skip_positions
+
+    def __iter__(self):
+        start_batch, partial = divmod(self.skip_positions, self.batch_size)
+        primary_batches, secondary_batches = source_batches_before(
+            start_batch, self.secondary_batches, self.cycle_batches
+        )
+        current_is_secondary = secondary_batch(
+            start_batch, self.secondary_batches, self.cycle_batches
+        )
+        primary_skip = primary_batches * self.batch_size
+        secondary_skip = secondary_batches * self.batch_size
+        if current_is_secondary:
+            secondary_skip += partial
+        else:
+            primary_skip += partial
+
+        primary = iter(SparseBatchDataset(
+            self.feature_set, self.primary_filenames, self.batch_size,
+            cyclic=self.cyclic, num_workers=self.num_workers,
+            config=self.config, skip_positions=primary_skip,
+        ))
+        secondary = iter(SparseBatchDataset(
+            self.feature_set, self.secondary_filenames, self.batch_size,
+            cyclic=self.cyclic, num_workers=1,
+            config=self.config, skip_positions=secondary_skip,
+        ))
+
+        batch_index = start_batch
+        while True:
+            use_secondary = secondary_batch(
+                batch_index, self.secondary_batches, self.cycle_batches
+            )
+            yield next(secondary if use_secondary else primary)
+            batch_index += 1
 
 
 def _safe_put(stop_event, q, item):

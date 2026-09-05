@@ -17,6 +17,15 @@ class TrainingConfig:
     datasets: Positional[Tuple[str, ...]] = ()
     """Training datasets (.binpack). Interleaved at chunk level if multiple specified. Same data is used for training and validation if no validation data is specified."""
 
+    secondary_datasets: UseAppendAction[Tuple[str, ...]] = ()
+    """Optional second source class mixed at a deterministic batch ratio."""
+
+    secondary_batches_per_cycle: int = 0
+    """Batches from secondary_datasets in each mix cycle. Zero disables mixing."""
+
+    mix_cycle_batches: int = 20
+    """Length of the deterministic source-mixing cycle in batches."""
+
     validation_datasets: UseAppendAction[Tuple[str, ...]] = ()
     """Validation data to use for validation instead of the training data."""
 
@@ -110,6 +119,14 @@ class TrainingConfig:
             raise ValueError(
                 f"skip_positions must be non-negative, got {self.skip_positions}."
             )
+        if self.secondary_datasets:
+            if not 0 < self.secondary_batches_per_cycle < self.mix_cycle_batches:
+                raise ValueError(
+                    "secondary_batches_per_cycle must be between 1 and "
+                    "mix_cycle_batches - 1 when secondary_datasets are supplied"
+                )
+        elif self.secondary_batches_per_cycle != 0:
+            raise ValueError("secondary_batches_per_cycle requires secondary_datasets")
         if self.check_val_every_n_epoch < 1:
             raise ValueError(
                 "check_val_every_n_epoch has to be >= 1, "

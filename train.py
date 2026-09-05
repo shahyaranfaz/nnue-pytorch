@@ -206,6 +206,9 @@ class SimpleLineLogger(Callback):
 
 def make_data_loaders(
     train_filenames,
+    secondary_filenames,
+    secondary_batches_per_cycle,
+    mix_cycle_batches,
     val_filenames,
     feature_name: str,
     num_workers,
@@ -220,14 +223,27 @@ def make_data_loaders(
 ):
     # Epoch and validation sizes are arbitrary
     features_name = feature_name
-    train_infinite = data_loader.SparseBatchDataset(
-        features_name,
-        train_filenames,
-        batch_size,
-        num_workers=num_workers,
-        config=config,
-        skip_positions=skip_positions,
-    )
+    if secondary_filenames:
+        train_infinite = data_loader.DeterministicBatchMixDataset(
+            features_name,
+            train_filenames,
+            secondary_filenames,
+            batch_size,
+            secondary_batches_per_cycle,
+            mix_cycle_batches,
+            num_workers=num_workers,
+            config=config,
+            skip_positions=skip_positions,
+        )
+    else:
+        train_infinite = data_loader.SparseBatchDataset(
+            features_name,
+            train_filenames,
+            batch_size,
+            num_workers=num_workers,
+            config=config,
+            skip_positions=skip_positions,
+        )
     # num_workers has to be 0 for sparse, and 1 for dense
     # it currently cannot work in parallel mode but it shouldn't need to
     train = DataLoader(
@@ -304,7 +320,12 @@ def main():
         if not os.path.exists(val_dataset):
             raise Exception("{0} does not exist".format(val_dataset))
 
+    for dataset in args.secondary_datasets:
+        if not os.path.exists(dataset):
+            raise Exception("{0} does not exist".format(dataset))
+
     train_datasets = args.datasets
+    secondary_datasets = args.secondary_datasets
     val_datasets = None
 
     if len(args.validation_datasets) > 0:
@@ -416,6 +437,13 @@ def main():
         print("Num inputs: {}".format(nnue.model.input.NUM_INPUTS))
 
         print("Training with: {}".format(train_datasets))
+        if secondary_datasets:
+            print("Secondary training source: {}".format(secondary_datasets))
+            print(
+                "Source mix: {}/{} secondary batches".format(
+                    args.secondary_batches_per_cycle, args.mix_cycle_batches
+                )
+            )
         print("Validating with: {}".format(val_datasets))
         print("Seed {}".format(args.seed))
         print(args.dataloader_config)
@@ -451,6 +479,9 @@ def main():
 
     train, val = make_data_loaders(
         train_datasets,
+        secondary_datasets,
+        args.secondary_batches_per_cycle,
+        args.mix_cycle_batches,
         val_datasets,
         input_feature_name,
         actual_workers,
