@@ -2,6 +2,7 @@ from .config import DataloaderSkipConfig
 
 from .dataset import (
     DeterministicBatchMixDataset,
+    DeterministicMultiMixDataset,
     SparseBatchDataset,
     SparseBatchProvider,
     FenBatchProvider,
@@ -16,6 +17,7 @@ __all__ = [
     "DataloaderSkipConfig",
     "SparseBatchDataset",
     "DeterministicBatchMixDataset",
+    "DeterministicMultiMixDataset",
     "SparseBatchProvider",
     "FenBatchProvider",
     "FixedNumBatchesDataset",

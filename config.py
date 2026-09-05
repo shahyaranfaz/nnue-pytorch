@@ -23,6 +23,12 @@ class TrainingConfig:
     secondary_batches_per_cycle: int = 0
     """Batches from secondary_datasets in each mix cycle. Zero disables mixing."""
 
+    tertiary_datasets: UseAppendAction[Tuple[str, ...]] = ()
+    """Optional third source class mixed at a deterministic batch ratio."""
+
+    tertiary_batches_per_cycle: int = 0
+    """Batches from tertiary_datasets in each mix cycle. Zero disables mixing."""
+
     mix_cycle_batches: int = 20
     """Length of the deterministic source-mixing cycle in batches."""
 
@@ -127,6 +133,25 @@ class TrainingConfig:
                 )
         elif self.secondary_batches_per_cycle != 0:
             raise ValueError("secondary_batches_per_cycle requires secondary_datasets")
+        if self.tertiary_datasets:
+            if not self.secondary_datasets:
+                raise ValueError("tertiary_datasets requires secondary_datasets")
+            if self.tertiary_batches_per_cycle <= 0:
+                raise ValueError(
+                    "tertiary_batches_per_cycle must be positive when "
+                    "tertiary_datasets are supplied"
+                )
+            if (
+                self.secondary_batches_per_cycle
+                + self.tertiary_batches_per_cycle
+                >= self.mix_cycle_batches
+            ):
+                raise ValueError(
+                    "secondary and tertiary batches must leave at least one "
+                    "primary batch per cycle"
+                )
+        elif self.tertiary_batches_per_cycle != 0:
+            raise ValueError("tertiary_batches_per_cycle requires tertiary_datasets")
         if self.check_val_every_n_epoch < 1:
             raise ValueError(
                 "check_val_every_n_epoch has to be >= 1, "

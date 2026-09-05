@@ -7,7 +7,12 @@ from torch.utils.data import Dataset
 
 from . import stream
 from .config import DataloaderSkipConfig, DataloaderDDPConfig
-from .mix_schedule import secondary_batch, source_batches_before
+from .mix_schedule import (
+    secondary_batch,
+    source_batches_before,
+    weighted_cycle,
+    weighted_source_batches_before,
+)
 
 
 def _recursive_pin(obj):
@@ -312,6 +317,70 @@ class DeterministicBatchMixDataset(torch.utils.data.IterableDataset):
                 batch_index, self.secondary_batches, self.cycle_batches
             )
             yield next(secondary if use_secondary else primary)
+            batch_index += 1
+
+
+class DeterministicMultiMixDataset(torch.utils.data.IterableDataset):
+    """Mix native sparse streams using an exact deterministic batch cycle."""
+
+    def __init__(
+        self,
+        feature_set: str,
+        source_filenames: list[list[str]],
+        source_batches: tuple[int, ...],
+        batch_size: int,
+        cyclic=True,
+        num_workers=1,
+        config: DataloaderSkipConfig = DataloaderSkipConfig(),
+        skip_positions=0,
+    ):
+        super().__init__()
+        if skip_positions < 0:
+            raise ValueError("skip_positions must be non-negative")
+        if len(source_filenames) != len(source_batches):
+            raise ValueError("source filenames and weights must have equal lengths")
+        if any(not filenames for filenames in source_filenames):
+            raise ValueError("every source must contain at least one filename")
+        source_cycle = weighted_cycle(source_batches)
+
+        self.feature_set = feature_set
+        self.source_filenames = source_filenames
+        self.source_batches = source_batches
+        self.source_cycle = source_cycle
+        self.batch_size = batch_size
+        self.cyclic = cyclic
+        self.num_workers = num_workers
+        self.config = config
+        self.skip_positions = skip_positions
+
+    def __iter__(self):
+        start_batch, partial = divmod(self.skip_positions, self.batch_size)
+        skipped_batches = weighted_source_batches_before(
+            start_batch, self.source_batches
+        )
+        current_source = self.source_cycle[start_batch % len(self.source_cycle)]
+        skipped_positions = [
+            batches * self.batch_size for batches in skipped_batches
+        ]
+        skipped_positions[current_source] += partial
+
+        streams = [
+            iter(SparseBatchDataset(
+                self.feature_set,
+                filenames,
+                self.batch_size,
+                cyclic=self.cyclic,
+                num_workers=self.num_workers if index == 0 else 1,
+                config=self.config,
+                skip_positions=skipped_positions[index],
+            ))
+            for index, filenames in enumerate(self.source_filenames)
+        ]
+
+        batch_index = start_batch
+        while True:
+            source = self.source_cycle[batch_index % len(self.source_cycle)]
+            yield next(streams[source])
             batch_index += 1
 
 
