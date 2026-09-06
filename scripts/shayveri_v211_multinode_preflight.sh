@@ -13,10 +13,23 @@ readonly MASTER_PORT="${MASTER_PORT:-29611}"
 readonly ROOT="${PREFLIGHT_ROOT:-$HOME/v211_multinode_preflight}"
 readonly RUN="$ROOT/run"
 readonly LOG="$ROOT/rank_${NODE_RANK}.log"
-readonly DATA="$PWD/.pgo/small.binpack"
+readonly SOURCE_DATA="$PWD/.pgo/small.binpack"
+readonly DATA="$ROOT/four_rank.binpack"
 
-[[ -f "$DATA" ]] || { echo "missing preflight data: $DATA" >&2; exit 1; }
+[[ -f "$SOURCE_DATA" ]] || { echo "missing preflight data: $SOURCE_DATA" >&2; exit 1; }
 mkdir -p "$ROOT"
+
+if [[ "$NODE_RANK" == 0 ]]; then
+  tmp="$DATA.tmp.$$"
+  cat "$SOURCE_DATA" "$SOURCE_DATA" "$SOURCE_DATA" "$SOURCE_DATA" > "$tmp"
+  mv "$tmp" "$DATA"
+else
+  for _ in $(seq 1 120); do
+    [[ -f "$DATA" ]] && break
+    sleep 1
+  done
+fi
+[[ -f "$DATA" ]] || { echo "rank-zero preflight corpus was not created" >&2; exit 1; }
 
 python3 -m torch.distributed.run \
   --nnodes=4 \
