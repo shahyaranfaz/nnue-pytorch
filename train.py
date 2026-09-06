@@ -15,7 +15,7 @@ import data_loader
 import model as M
 import tyro
 
-from config import TrainingConfig
+from config import TrainingConfig, distributed_batch_sizes
 
 warnings.filterwarnings("ignore", ".*does not have many workers.*")
 
@@ -388,8 +388,8 @@ def main():
                 return
         else:
             devices = [0]
-        n_devices = len(devices)
-        if n_devices == 0:
+        local_device_count = len(devices)
+        if local_device_count == 0:
             print(
                 f"Invalid --gpus argument: '{args.gpus}'. "
                 "Expected a comma separated list of ints, e.g. 0,1",
@@ -403,16 +403,16 @@ def main():
                 file=sys.stderr,
             )
         devices = 1
-        n_devices = 1
-    if global_batch_size_requested % n_devices != 0:
-        msg = (
-            f"--batch-size {global_batch_size_requested} must be divisible by "
-            f"number of devices ({n_devices}) for accelerator='{accelerator}'."
-        )
-        if accelerator == "cuda":
-            msg += f" Got --gpus={args.gpus or '0'}."
-        raise ValueError(msg)
-    per_gpu_batch_size = global_batch_size_requested // n_devices
+        local_device_count = 1
+    torchrun_world_size = int(
+        os.environ.get("WORLD_SIZE", local_device_count * args.num_nodes)
+    )
+    n_devices, per_gpu_batch_size = distributed_batch_sizes(
+        global_batch_size_requested,
+        local_device_count,
+        args.num_nodes,
+        torchrun_world_size,
+    )
     feature_name = args.nnue_lightning_config.features
 
     max_epoch = args.max_epochs or 800
@@ -452,7 +452,7 @@ def main():
 
     if is_master_process():
         print(
-            f"batch_size(global)={global_batch_size_requested} | n_devices={n_devices} | batch_size(per_gpu)={per_gpu_batch_size}"
+            f"batch_size(global)={global_batch_size_requested} | world_size={n_devices} | batch_size(per_gpu)={per_gpu_batch_size}"
         )
         print("Loss parameters:")
         print(args.nnue_lightning_config.loss_params)
@@ -550,6 +550,7 @@ def main():
         accelerator=accelerator,
         strategy="ddp" if n_devices > 1 else "auto",
         devices=devices,
+        num_nodes=args.num_nodes,
         logger=loggers,
         callbacks=trainer_callbacks,
         log_every_n_steps=refresh_rate,

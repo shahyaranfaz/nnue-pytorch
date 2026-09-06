@@ -12,6 +12,27 @@ from data_loader.config import DataloaderSkipConfig
 from model.config import NNUELightningConfig
 
 
+def distributed_batch_sizes(
+    global_batch_size: int,
+    local_device_count: int,
+    num_nodes: int,
+    torchrun_world_size: Optional[int] = None,
+) -> tuple[int, int]:
+    world_size = local_device_count * num_nodes
+    actual_world_size = world_size if torchrun_world_size is None else torchrun_world_size
+    if actual_world_size != world_size:
+        raise ValueError(
+            f"WORLD_SIZE={actual_world_size} does not match --num-nodes "
+            f"{num_nodes} x local devices {local_device_count} = {world_size}."
+        )
+    if global_batch_size % world_size != 0:
+        raise ValueError(
+            f"--batch-size {global_batch_size} must be divisible by world size "
+            f"({world_size})."
+        )
+    return world_size, global_batch_size // world_size
+
+
 @dataclass(kw_only=True)
 class TrainingConfig:
     datasets: Positional[Tuple[str, ...]] = ()
@@ -46,6 +67,9 @@ class TrainingConfig:
 
     gpus: Optional[str] = None
     """List of gpus to use, e.g. 0,1,2,3 for 4 gpus. Only used when accelerator="cuda"."""
+
+    num_nodes: int = 1
+    """Number of trainer nodes. Each node must expose the same number of gpus."""
 
     pin_memory: bool = True
     """Whether to use pin memory in the data pipeline. Should generally be left on unless you encounter issues with too much RAM usage."""
@@ -121,6 +145,8 @@ class TrainingConfig:
             raise ValueError(
                 "Arguments `max_epochs`, `epoch_size` and `batch_size` must be positive."
             )
+        if self.num_nodes <= 0:
+            raise ValueError("Argument `num_nodes` must be positive.")
         if self.skip_positions < 0:
             raise ValueError(
                 f"skip_positions must be non-negative, got {self.skip_positions}."
