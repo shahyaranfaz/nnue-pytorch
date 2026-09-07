@@ -43,7 +43,11 @@ fi
 
 echo "9070 feeder active; maximum remote in-flight shards=$MAX_IN_FLIGHT"
 while true; do
-  remote_count=$(ssh "$REMOTE" "find '$REMOTE_ROOT/ready' -maxdepth 1 -type f -name '*.binpack' | wc -l")
+  if ! remote_count=$(ssh "$REMOTE" "find '$REMOTE_ROOT/ready' -maxdepth 1 -type f -name '*.binpack' | wc -l"); then
+    echo "Remote inventory failed; retrying in $POLL_SECONDS seconds" >&2
+    sleep "$POLL_SECONDS"
+    continue
+  fi
   for kind in v210 stockfish t80; do
     state="$STREAM/state/$kind.json"
     [[ -f "$state" ]] || continue
@@ -53,13 +57,24 @@ with open(sys.argv[1], encoding="utf-8") as f: values=json.load(f).get("pending"
 if isinstance(values, dict): values=[values]
 for value in values: print(os.path.basename(value["path"]))
 PY
-)
+    )
     if (( ${#pending_names[@]} )); then
       name=${pending_names[0]}
-      if ssh "$REMOTE" test -f "$REMOTE_ROOT/deleted/$name"; then
+      if ! remote_status=$(ssh "$REMOTE" "
+        if test -f '$REMOTE_ROOT/deleted/$name'; then echo deleted
+        elif test -f '$REMOTE_ROOT/ready/$name.meta'; then echo ready-meta
+        elif test -f '$REMOTE_ROOT/ready/$name'; then echo ready-no-meta
+        else echo absent
+        fi
+      "); then
+        echo "Remote status failed; retrying in $POLL_SECONDS seconds" >&2
+        sleep "$POLL_SECONDS"
+        continue 2
+      fi
+      if [[ "$remote_status" == deleted ]]; then
         python3 "$REPO/scripts/shard_stream/shard_binpacks.py" ack --state "$state"
-        ssh "$REMOTE" rm -f -- "$REMOTE_ROOT/deleted/$name"
-      elif ssh "$REMOTE" test -f "$REMOTE_ROOT/ready/$name"; then
+        ssh "$REMOTE" rm -f -- "$REMOTE_ROOT/deleted/$name" || true
+      elif [[ "$remote_status" == ready-no-meta ]]; then
         case "$kind" in
           v210) required=lane_a,lane_b,lane_c,lane_d ;;
           *) required=lane_d ;;
@@ -69,7 +84,7 @@ PY
         env STATE="$state" PENDING_INDEX=0 SHARD_KIND="$kind" STREAM_SEQUENCE="$remote_sequence" \
           REQUIRED_LANES="$required" REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
           bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
-      else
+      elif [[ "$remote_status" == absent ]]; then
         if (( remote_count >= MAX_IN_FLIGHT )); then
           continue
         fi
@@ -85,7 +100,11 @@ PY
     fi
   done
 
-  remote_count=$(ssh "$REMOTE" "find '$REMOTE_ROOT/ready' -maxdepth 1 -type f -name '*.binpack' | wc -l")
+  if ! remote_count=$(ssh "$REMOTE" "find '$REMOTE_ROOT/ready' -maxdepth 1 -type f -name '*.binpack' | wc -l"); then
+    echo "Remote inventory failed; retrying in $POLL_SECONDS seconds" >&2
+    sleep "$POLL_SECONDS"
+    continue
+  fi
   if (( remote_count >= MAX_IN_FLIGHT )); then sleep "$POLL_SECONDS"; continue; fi
 
   kind=${SCHEDULE[$((schedule_index % ${#SCHEDULE[@]}))]}
