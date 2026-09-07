@@ -9,14 +9,19 @@ readonly BATCH_SIZE=16384
 readonly FULL_STEPS=2441440
 
 case "$(hostname -s)" in
-  dh2010pc16) readonly LANE=lane_a; readonly LAMBDA=0.74; readonly LR=0.0004375; readonly EPOCH_SIZE=330579968; readonly MAX_SEGMENTS=121; readonly PARENT="$ROOT/parents/v2_5_factorized.pt" ;;
-  dh2010pc19) readonly LANE=lane_b; readonly LAMBDA=0.74; readonly LR=0.0000200; readonly EPOCH_SIZE=330579968; readonly MAX_SEGMENTS=121; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt" ;;
-  dh2010pc22) readonly LANE=lane_c; readonly LAMBDA=0.90; readonly LR=0.0000200; readonly EPOCH_SIZE=330579968; readonly MAX_SEGMENTS=121; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt" ;;
-  dh2010pc25) readonly LANE=lane_d; readonly LAMBDA=0.74; readonly LR=0.0000200; readonly EPOCH_SIZE=165289984; readonly MAX_SEGMENTS=242; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt" ;;
+  dh2010pc16) readonly LANE=lane_a; readonly LAMBDA=0.74; readonly LR=0.0004375; readonly EPOCH_SIZE=330579968; readonly MAX_SEGMENTS=121; readonly PARENT="$ROOT/parents/v2_5_factorized.pt"; readonly PARENT_SHA=c9b37e262cb917650b445e54d3bb6153d4698b84dcb094c657d75145cd242a79 ;;
+  dh2010pc19) readonly LANE=lane_b; readonly LAMBDA=0.74; readonly LR=0.0000200; readonly EPOCH_SIZE=330579968; readonly MAX_SEGMENTS=121; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt"; readonly PARENT_SHA=abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1 ;;
+  dh2010pc22) readonly LANE=lane_c; readonly LAMBDA=0.90; readonly LR=0.0000200; readonly EPOCH_SIZE=330579968; readonly MAX_SEGMENTS=121; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt"; readonly PARENT_SHA=abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1 ;;
+  dh2010pc25) readonly LANE=lane_d; readonly LAMBDA=0.74; readonly LR=0.0000200; readonly EPOCH_SIZE=165289984; readonly MAX_SEGMENTS=242; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt"; readonly PARENT_SHA=abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1 ;;
   *) echo "No lane is assigned to $(hostname -s)" >&2; exit 1 ;;
 esac
 
 [[ -f "$PARENT" ]] || { echo "Missing frozen parent: $PARENT" >&2; exit 1; }
+actual_parent_sha=$(sha256sum "$PARENT" | cut -d' ' -f1)
+[[ "$actual_parent_sha" == "$PARENT_SHA" ]] || {
+  echo "Parent hash mismatch: expected $PARENT_SHA, got $actual_parent_sha" >&2
+  exit 1
+}
 # shellcheck disable=SC1091
 source "$REPO/scripts/shard_stream/worker_env.sh"
 

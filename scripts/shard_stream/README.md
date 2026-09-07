@@ -45,6 +45,13 @@ Before starting workers, place immutable factorized PyTorch models at:
 Record their SHA-256 values separately before production. `train.py` loads
 warm models with `torch.load`; exported `.nnue` files are not valid substitutes.
 
+The worker-enforced hashes are:
+
+```text
+v2_5_factorized.pt     c9b37e262cb917650b445e54d3bb6153d4698b84dcb094c657d75145cd242a79
+net1_35B_factorized.pt abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1
+```
+
 ## Startup
 
 Run once on each of the four trainers:
