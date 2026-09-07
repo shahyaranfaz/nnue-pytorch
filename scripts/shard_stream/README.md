@@ -20,6 +20,12 @@ checkpoints, compressed logs, ACKs, and deletion markers live on NFS. Venvs,
 caches, compilation caches, and active training directories live under
 `/tmp/anfazsha-v211` on each worker.
 
+Each lane keeps one resumable checkpoint and exports compact `.nnue` files at
+its midpoint and final gate. A durable pending record is written before every
+segment. If a worker dies after publishing its checkpoint but before its ACK,
+the next invocation verifies the checkpoint's global step and reconstructs the
+completion without training the shard twice.
+
 ## Encoded experiments
 
 | Host | Lane | Parent | Data | Lambda | LR | Presentations per shard |

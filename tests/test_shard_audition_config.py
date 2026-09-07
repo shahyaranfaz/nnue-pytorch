@@ -29,6 +29,23 @@ class ShardAuditionConfigTest(unittest.TestCase):
         self.assertEqual(steps, {full_steps})
         self.assertEqual(full_steps, 48_820)
 
+    def test_worker_can_recover_checkpoint_before_ack_window(self):
+        text = WORKER.read_text(encoding="utf-8")
+        pending_publish = 'mv -- "$pending_file.partial" "$pending_file"'
+        training = 'python -u train.py "${args[@]}"'
+        self.assertIn(pending_publish, text)
+        self.assertLess(text.rindex(pending_publish), text.index(training))
+        self.assertIn('actual_step=$(checkpoint_global_step "$checkpoint")', text)
+        self.assertIn('publish_completion "$pending_segment" "$pending_shard" 1', text)
+        self.assertIn('rm -f -- "$pending_file"', text)
+
+    def test_worker_exports_only_midpoint_and_final_nnue_gates(self):
+        text = WORKER.read_text(encoding="utf-8")
+        self.assertIn("completed_segment != half_segment", text)
+        self.assertIn("completed_segment != MAX_SEGMENTS", text)
+        self.assertIn('python serialize.py "$checkpoint"', text)
+        self.assertIn('sha256sum "$output"', text)
+
     def test_feeder_cycle_and_quota_cap_match_audition(self):
         text = FEEDER.read_text(encoding="utf-8")
         self.assertRegex(text, r"readonly MAX_IN_FLIGHT=1\b")

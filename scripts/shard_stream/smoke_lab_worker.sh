@@ -63,6 +63,8 @@ for target_epoch in 1 2; do
   python -u train.py "${args[@]}" 2>&1 | tee "$SMOKE_ROOT/phase_$target_epoch.log"
   produced=$(find "$phase_root" -path '*/checkpoints/last.ckpt' -type f -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
   [[ -n "$produced" && -f "$produced" ]] || { echo "No phase $target_epoch checkpoint produced" >&2; exit 1; }
+  automatic_net="${produced%.ckpt}.nnue"
+  [[ -f "$automatic_net" ]] || { echo "No automatic phase $target_epoch NNUE export produced" >&2; exit 1; }
   checkpoint="$SMOKE_ROOT/phase_$target_epoch.ckpt"
   cp -- "$produced" "$checkpoint.partial"
   mv -- "$checkpoint.partial" "$checkpoint"

@@ -50,11 +50,35 @@ class ConsolidatedCheckpoint(ModelCheckpoint):
         kwargs.setdefault("monitor", None)
         super().__init__(*args, **kwargs)
 
+    def _export_nnue(self, trainer, checkpoint_path):
+        if not trainer.is_global_zero:
+            return
+        module = trainer.lightning_module
+        module = getattr(module, "_orig_mod", module)
+        if not isinstance(module.model, M.ShayveriDirectModel):
+            raise RuntimeError(
+                "This SHAYVERI fork only auto-exports SHAYVERI architectures"
+            )
+        payload = M.ShayveriNNUEWriter(module.model).buf
+        output = os.path.splitext(checkpoint_path)[0] + ".nnue"
+        partial = output + ".partial"
+        with open(partial, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(partial, output)
+        print(f"Automatically exported {output}", flush=True)
+
+    def _save_checkpoint(self, trainer, filepath):
+        super()._save_checkpoint(trainer, filepath)
+        self._export_nnue(trainer, filepath)
+
     def on_train_end(self, trainer, pl_module):
         if self.dirpath:
             # Manually trigger a final save to last.ckpt
             path = os.path.join(self.dirpath, "last.ckpt")
             trainer.save_checkpoint(path)
+            self._export_nnue(trainer, path)
 
 
 class SimpleLineLogger(Callback):

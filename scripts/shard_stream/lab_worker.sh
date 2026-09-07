@@ -29,7 +29,72 @@ lane_root="$ROOT/lanes/$LANE"
 checkpoint="$lane_root/checkpoints/current.ckpt"
 segment_file="$lane_root/segment"
 completion_file="$lane_root/last_completion.env"
-mkdir -p "$lane_root/checkpoints" "$lane_root/logs" "$ROOT/acks"
+pending_file="$lane_root/pending.env"
+mkdir -p "$lane_root/checkpoints" "$lane_root/logs" "$ROOT/acks" "$ROOT/nets/$LANE"
+
+checkpoint_global_step() {
+  python - "$1" <<'PY'
+import sys
+import torch
+
+checkpoint = torch.load(sys.argv[1], weights_only=False, map_location="cpu")
+step = checkpoint.get("global_step")
+if not isinstance(step, int):
+    raise SystemExit("checkpoint has no integer global_step")
+print(step)
+PY
+}
+
+export_gate_if_needed() {
+  local completed_segment=$1
+  local half_segment=$((MAX_SEGMENTS / 2))
+  if (( completed_segment != half_segment && completed_segment != MAX_SEGMENTS )); then
+    return
+  fi
+  local presentations=$((completed_segment * EPOCH_SIZE))
+  local output="$ROOT/nets/$LANE/${LANE}_s$(printf '%03d' "$completed_segment")_p${presentations}.nnue"
+  [[ ! -f "$output" ]] || return
+  local local_output="$LOCAL_ROOT/work/$(basename "$output").partial"
+  if [[ -n "${latest_net:-}" && -f "$latest_net" ]]; then
+    cp -- "$latest_net" "$local_output.nnue"
+  else
+    python serialize.py "$checkpoint" "$local_output.nnue" \
+      --architecture=shayveri-direct --features=ShayveriKB16^ \
+      --shayveri-factorizer --ft-compression=none --device=cpu
+  fi
+  cp -- "$local_output.nnue" "$output.partial"
+  mv -- "$output.partial" "$output"
+  rm -f -- "$local_output.nnue"
+  sha256sum "$output" > "$output.sha256.partial"
+  mv -- "$output.sha256.partial" "$output.sha256"
+}
+
+publish_completion() {
+  local completed_segment=$1
+  local shard_name=$2
+  local recovered=${3:-0}
+  local checkpoint_sha
+  checkpoint_sha=$(sha256sum "$checkpoint" | cut -d' ' -f1)
+  export_gate_if_needed "$completed_segment"
+  {
+    echo "lane=$LANE"
+    echo "host=$(hostname -s)"
+    echo "shard=$shard_name"
+    echo "segment=$completed_segment"
+    echo "accepted_presentations=$((completed_segment * EPOCH_SIZE))"
+    echo "checkpoint_sha256=$checkpoint_sha"
+    echo "recovered_after_checkpoint=$recovered"
+    date -u '+finished_utc=%Y-%m-%dT%H:%M:%SZ'
+  } > "$completion_file.partial"
+  mv -- "$completion_file.partial" "$completion_file"
+  printf '%s\n' "$completed_segment" > "$segment_file.partial"
+  mv -- "$segment_file.partial" "$segment_file"
+  mkdir -p "$ROOT/acks/$shard_name"
+  cp -- "$completion_file" "$ROOT/acks/$shard_name/$LANE.ack.partial"
+  mv -- "$ROOT/acks/$shard_name/$LANE.ack.partial" "$ROOT/acks/$shard_name/$LANE.ack"
+  rm -f -- "$pending_file"
+}
+
 segment=0
 [[ ! -f "$segment_file" ]] || segment=$(<"$segment_file")
 if [[ -f "$completion_file" ]]; then
@@ -38,6 +103,21 @@ if [[ -f "$completion_file" ]]; then
     segment=$completion_segment
     printf '%s\n' "$segment" > "$segment_file.partial"
     mv -- "$segment_file.partial" "$segment_file"
+  fi
+fi
+if [[ -f "$pending_file" ]]; then
+  pending_segment=$(sed -n 's/^segment=//p' "$pending_file")
+  pending_shard=$(sed -n 's/^shard=//p' "$pending_file")
+  expected_step=$(sed -n 's/^expected_global_step=//p' "$pending_file")
+  if [[ "$pending_segment" =~ ^[0-9]+$ ]] && (( pending_segment <= segment )); then
+    rm -f -- "$pending_file"
+  elif [[ "$pending_segment" =~ ^[0-9]+$ && "$expected_step" =~ ^[0-9]+$ && "$pending_shard" =~ ^[A-Za-z0-9._-]+\.binpack$ && -f "$checkpoint" ]]; then
+    actual_step=$(checkpoint_global_step "$checkpoint")
+    if [[ "$actual_step" == "$expected_step" ]]; then
+      echo "Recovering durable completion for $LANE and $pending_shard"
+      publish_completion "$pending_segment" "$pending_shard" 1
+      segment=$pending_segment
+    fi
   fi
 fi
 
@@ -78,6 +158,13 @@ while (( segment < MAX_SEGMENTS )); do
   mkdir -p "$work"
   log="$work/train.log"
 
+  {
+    echo "segment=$next_segment"
+    echo "shard=$name"
+    echo "expected_global_step=$((next_segment * EPOCH_SIZE / BATCH_SIZE))"
+  } > "$pending_file.partial"
+  mv -- "$pending_file.partial" "$pending_file"
+
   args=(
     "$selected"
     --architecture=shayveri-direct --features=ShayveriKB16^
@@ -103,29 +190,16 @@ while (( segment < MAX_SEGMENTS )); do
   python -u train.py "${args[@]}" 2>&1 | tee "$log"
   produced=$(find "$work" -path '*/checkpoints/last.ckpt' -type f -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
   [[ -n "$produced" && -f "$produced" ]] || { echo "No last.ckpt produced" >&2; exit 1; }
+  latest_net="${produced%.ckpt}.nnue"
+  [[ -f "$latest_net" ]] || { echo "No automatic NNUE export produced" >&2; exit 1; }
 
   cp -- "$produced" "$lane_root/checkpoints/current.ckpt.partial"
-  checkpoint_sha=$(sha256sum "$lane_root/checkpoints/current.ckpt.partial" | cut -d' ' -f1)
   mv -- "$lane_root/checkpoints/current.ckpt.partial" "$checkpoint"
   gzip -c "$log" > "$lane_root/logs/segment_$(printf '%03d' "$next_segment").log.gz.partial"
   mv -- "$lane_root/logs/segment_$(printf '%03d' "$next_segment").log.gz.partial" \
     "$lane_root/logs/segment_$(printf '%03d' "$next_segment").log.gz"
 
-  {
-    echo "lane=$LANE"
-    echo "host=$(hostname -s)"
-    echo "shard=$name"
-    echo "segment=$next_segment"
-    echo "accepted_presentations=$((next_segment * EPOCH_SIZE))"
-    echo "checkpoint_sha256=$checkpoint_sha"
-    date -u '+finished_utc=%Y-%m-%dT%H:%M:%SZ'
-  } > "$completion_file.partial"
-  mv -- "$completion_file.partial" "$completion_file"
-  printf '%s\n' "$next_segment" > "$segment_file.partial"
-  mv -- "$segment_file.partial" "$segment_file"
-  mkdir -p "$ROOT/acks/$name"
-  cp -- "$completion_file" "$ROOT/acks/$name/$LANE.ack.partial"
-  mv -- "$ROOT/acks/$name/$LANE.ack.partial" "$ROOT/acks/$name/$LANE.ack"
+  publish_completion "$next_segment" "$name"
   segment=$next_segment
   rm -rf -- "$work"
 done
