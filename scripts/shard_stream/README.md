@@ -79,6 +79,17 @@ cd /student/anfazsha/nnue-pytorch
 bash scripts/shard_stream/bootstrap_lab_pc.sh
 ```
 
+Before starting the audition pipeline, run the disposable 2-phase resume and
+serialization smoke test on each trainer:
+
+```bash
+cd /student/anfazsha/nnue-pytorch
+bash scripts/shard_stream/smoke_lab_worker.sh
+```
+
+The smoke test writes only under `/tmp/anfazsha-v211/smoke`, does not publish an
+ACK, and does not alter the persistent audition state.
+
 Run continuously on pc10:
 
 ```bash

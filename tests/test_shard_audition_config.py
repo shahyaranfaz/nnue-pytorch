@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "scripts" / "shard_stream" / "lab_worker.sh"
 FEEDER = ROOT / "scripts" / "shard_stream" / "source_feeder.sh"
+SMOKE = ROOT / "scripts" / "shard_stream" / "smoke_lab_worker.sh"
 
 
 class ShardAuditionConfigTest(unittest.TestCase):
@@ -36,6 +37,19 @@ class ShardAuditionConfigTest(unittest.TestCase):
         self.assertEqual(schedule.count("v210"), 10)
         self.assertEqual(schedule.count("stockfish"), 7)
         self.assertEqual(schedule.count("t80"), 3)
+
+    def test_smoke_is_disposable_and_checks_two_phase_resume(self):
+        text = SMOKE.read_text(encoding="utf-8")
+        self.assertRegex(text, r"readonly EPOCH_SIZE=1048576\b")
+        self.assertRegex(text, r"readonly FULL_STEPS=128\b")
+        self.assertIn("for target_epoch in 1 2", text)
+        self.assertIn('--resume-from-checkpoint="$checkpoint"', text)
+        self.assertIn('checkpoint.get("global_step")', text)
+        self.assertIn('checkpoint.get("optimizer_states")', text)
+        self.assertIn('checkpoint.get("lr_schedulers")', text)
+        self.assertIn("cmp -- \"$net\" \"$roundtrip\"", text)
+        self.assertNotIn("$ROOT/acks", text)
+        self.assertNotIn("$ROOT/lanes", text)
 
 
 if __name__ == "__main__":
