@@ -6,8 +6,9 @@ runtime role.
 ## Roles
 
 - RX 9070 XT: run `source_feeder.sh` continuously during the lab auditions. It
-  creates and retains at most one remote 2.75 GB native binpack shard, transfers it through
-  `dh2020pc10.utm.utoronto.ca`, and advances only after remote deletion.
+  retains at most one remote 2.75 GB native binpack shard and prepares one local
+  successor while that shard is training. It transfers through
+  `dh2020pc10.utm.utoronto.ca` and advances only after remote deletion.
 - `dh2020pc10`: run `lab_master.sh` continuously. It deletes a shared-NFS shard
   only after every required lane has written a durable checkpoint ACK.
 - `dh2010pc16`, `19`, `22`, and `25`: run `bootstrap_lab_pc.sh` once and then

@@ -24,6 +24,7 @@ trap cleanup EXIT
 
 mkdir -p "$STREAM/shards" "$STREAM/state"
 schedule_file="$STREAM/schedule_index"
+prepared_file="$STREAM/prepared.env"
 schedule_index=0
 [[ ! -f "$schedule_file" ]] || schedule_index=$(<"$schedule_file")
 
@@ -43,6 +44,8 @@ fi
 
 echo "9070 feeder active; maximum remote in-flight shards=$MAX_IN_FLIGHT"
 while true; do
+  prepared_name=""
+  [[ ! -f "$prepared_file" ]] || prepared_name=$(sed -n 's/^name=//p' "$prepared_file")
   if ! remote_count=$(ssh "$REMOTE" "find '$REMOTE_ROOT/ready' -maxdepth 1 -type f -name '*.binpack' | wc -l"); then
     echo "Remote inventory failed; retrying in $POLL_SECONDS seconds" >&2
     sleep "$POLL_SECONDS"
@@ -85,6 +88,7 @@ PY
           REQUIRED_LANES="$required" REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
           bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
       elif [[ "$remote_status" == absent ]]; then
+        [[ "$name" != "$prepared_name" ]] || continue
         if (( remote_count >= MAX_IN_FLIGHT )); then
           continue
         fi
@@ -96,6 +100,9 @@ PY
           REQUIRED_LANES="$required" REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
           bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
         remote_count=$((remote_count + 1))
+        schedule_index=$((schedule_index + 1))
+        printf '%s\n' "$schedule_index" > "$schedule_file.partial"
+        mv -- "$schedule_file.partial" "$schedule_file"
       fi
     fi
   done
@@ -105,28 +112,60 @@ PY
     sleep "$POLL_SECONDS"
     continue
   fi
-  if (( remote_count >= MAX_IN_FLIGHT )); then sleep "$POLL_SECONDS"; continue; fi
 
-  kind=${SCHEDULE[$((schedule_index % ${#SCHEDULE[@]}))]}
-  case "$kind" in
-    v210) inputs=("${v210[@]}"); required=lane_a,lane_b,lane_c,lane_d ;;
-    stockfish) inputs=("${stockfish[@]}"); required=lane_d ;;
-    t80) inputs=("${t80[@]}"); required=lane_d ;;
-  esac
-  state="$STREAM/state/$kind.json"
-  output_dir="$STREAM/shards"
-  [[ "$kind" != v210 || ! -d /mnt/d/nnue/v210_stream ]] || output_dir=/mnt/d/nnue/v210_stream
-  before=$(find "$output_dir" -maxdepth 1 -type f -name "${kind}_*.binpack" | wc -l)
-  python3 "$REPO/scripts/shard_stream/shard_binpacks.py" next \
-    --output-dir "$output_dir" --state "$state" --prefix="$kind" \
-    --target-size=2750M --max-pending=2 "${inputs[@]}"
-  after=$(find "$output_dir" -maxdepth 1 -type f -name "${kind}_*.binpack" | wc -l)
-  (( after > before )) || { echo "$kind source exhausted" >&2; exit 1; }
+  if (( remote_count < MAX_IN_FLIGHT )) && [[ -f "$prepared_file" ]]; then
+    prepared_kind=$(sed -n 's/^kind=//p' "$prepared_file")
+    prepared_state=$(sed -n 's/^state=//p' "$prepared_file")
+    prepared_sequence=$(sed -n 's/^sequence=//p' "$prepared_file")
+    prepared_required=$(sed -n 's/^required_lanes=//p' "$prepared_file")
+    prepared_name=$(sed -n 's/^name=//p' "$prepared_file")
+    echo "Publishing prepared successor $prepared_name"
+    env STATE="$prepared_state" PENDING_INDEX=-1 SHARD_KIND="$prepared_kind" \
+      STREAM_SEQUENCE="$prepared_sequence" REQUIRED_LANES="$prepared_required" \
+      REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
+      bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
+    rm -f -- "$prepared_file"
+    remote_count=$((remote_count + 1))
+  fi
 
-  env STATE="$state" PENDING_INDEX=-1 SHARD_KIND="$kind" STREAM_SEQUENCE="$schedule_index" REQUIRED_LANES="$required" \
-    REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
-    bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
-  schedule_index=$((schedule_index + 1))
-  printf '%s\n' "$schedule_index" > "$schedule_file.partial"
-  mv -- "$schedule_file.partial" "$schedule_file"
+  if [[ ! -f "$prepared_file" ]]; then
+    kind=${SCHEDULE[$((schedule_index % ${#SCHEDULE[@]}))]}
+    case "$kind" in
+      v210) inputs=("${v210[@]}"); required=lane_a,lane_b,lane_c,lane_d ;;
+      stockfish) inputs=("${stockfish[@]}"); required=lane_d ;;
+      t80) inputs=("${t80[@]}"); required=lane_d ;;
+    esac
+    state="$STREAM/state/$kind.json"
+    output_dir="$STREAM/shards"
+    [[ "$kind" != v210 || ! -d /mnt/d/nnue/v210_stream ]] || output_dir=/mnt/d/nnue/v210_stream
+    echo "Preparing local successor for stream sequence $schedule_index ($kind)"
+    python3 "$REPO/scripts/shard_stream/shard_binpacks.py" next \
+      --output-dir "$output_dir" --state "$state" --prefix="$kind" \
+      --target-size=2750M --max-pending=2 "${inputs[@]}"
+    prepared_name=$(python3 - "$state" <<'PY'
+import json, os, sys
+with open(sys.argv[1], encoding="utf-8") as source:
+    pending = json.load(source).get("pending") or []
+if isinstance(pending, dict):
+    pending = [pending]
+if not pending:
+    raise SystemExit("sharder produced no pending successor")
+print(os.path.basename(pending[-1]["path"]))
+PY
+    )
+    {
+      printf 'name=%s\n' "$prepared_name"
+      printf 'kind=%s\n' "$kind"
+      printf 'state=%s\n' "$state"
+      printf 'sequence=%s\n' "$schedule_index"
+      printf 'required_lanes=%s\n' "$required"
+    } > "$prepared_file.partial"
+    mv -- "$prepared_file.partial" "$prepared_file"
+    schedule_index=$((schedule_index + 1))
+    printf '%s\n' "$schedule_index" > "$schedule_file.partial"
+    mv -- "$schedule_file.partial" "$schedule_file"
+    echo "Prepared local successor $prepared_name"
+  fi
+
+  if (( remote_count >= MAX_IN_FLIGHT )); then sleep "$POLL_SECONDS"; fi
 done
