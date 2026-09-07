@@ -54,6 +54,8 @@ class ShardAuditionConfigTest(unittest.TestCase):
     def test_feeder_cycle_and_quota_cap_match_audition(self):
         text = FEEDER.read_text(encoding="utf-8")
         self.assertRegex(text, r"readonly MAX_IN_FLIGHT=1\b")
+        self.assertNotIn('\n        STATE="$state"', text)
+        self.assertIn('env STATE="$state"', text)
         schedule = re.search(r"readonly SCHEDULE=\(([^)]+)\)", text).group(1).split()
         self.assertEqual(len(schedule), 20)
         self.assertEqual(schedule.count("v210"), 10)

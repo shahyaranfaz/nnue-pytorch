@@ -66,7 +66,7 @@ PY
         esac
         remote_sequence=$(ssh "$REMOTE" "sed -n 's/^stream_sequence=//p' '$REMOTE_ROOT/ready/$name.meta' 2>/dev/null || true")
         [[ -n "$remote_sequence" ]] || remote_sequence=0
-        STATE="$state" PENDING_INDEX=0 SHARD_KIND="$kind" STREAM_SEQUENCE="$remote_sequence" \
+        env STATE="$state" PENDING_INDEX=0 SHARD_KIND="$kind" STREAM_SEQUENCE="$remote_sequence" \
           REQUIRED_LANES="$required" REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
           bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
       else
@@ -77,7 +77,7 @@ PY
           v210) required=lane_a,lane_b,lane_c,lane_d ;;
           *) required=lane_d ;;
         esac
-        STATE="$state" PENDING_INDEX=0 SHARD_KIND="$kind" STREAM_SEQUENCE="$schedule_index" \
+        env STATE="$state" PENDING_INDEX=0 SHARD_KIND="$kind" STREAM_SEQUENCE="$schedule_index" \
           REQUIRED_LANES="$required" REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
           bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
         remote_count=$((remote_count + 1))
@@ -104,7 +104,7 @@ PY
   after=$(find "$output_dir" -maxdepth 1 -type f -name "${kind}_*.binpack" | wc -l)
   (( after > before )) || { echo "$kind source exhausted" >&2; exit 1; }
 
-  STATE="$state" PENDING_INDEX=-1 SHARD_KIND="$kind" STREAM_SEQUENCE="$schedule_index" REQUIRED_LANES="$required" \
+  env STATE="$state" PENDING_INDEX=-1 SHARD_KIND="$kind" STREAM_SEQUENCE="$schedule_index" REQUIRED_LANES="$required" \
     REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
     bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
   schedule_index=$((schedule_index + 1))
