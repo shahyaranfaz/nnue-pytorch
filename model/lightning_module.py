@@ -271,6 +271,18 @@ class NNUE(L.LightningModule):
     def test_step(self, batch, batch_idx):
         self.step_(batch, batch_idx, "test_loss")
 
+    @torch.compiler.disable
+    def _record_step_loss(self, loss_type, loss):
+        self.loss_metrics[f"{loss_type}_epoch"].update(loss)
+        self.log(
+            loss_type,
+            loss,
+            prog_bar=False,
+            sync_dist=False,
+            on_epoch=False,
+            on_step=True,
+        )
+
     def step_(self, batch: tuple[Tensor, ...], batch_idx, loss_type):
         _ = batch_idx  # unused, but required by pytorch-lightning
 
@@ -318,13 +330,5 @@ class NNUE(L.LightningModule):
                 scorenet, score, outcome, self.config.loss_params, actual_lambda
             )
 
-        self.loss_metrics[f"{loss_type}_epoch"].update(sf_loss)
-        self.log(
-            loss_type,
-            sf_loss,
-            prog_bar=False,
-            sync_dist=False,
-            on_epoch=False,
-            on_step=True,
-        )
+        self._record_step_loss(loss_type, sf_loss)
         return sf_loss
