@@ -8,6 +8,28 @@ set -euo pipefail
 readonly STATE=${STATE:-/mnt/d/nnue/v210_stream_state.json}
 readonly REMOTE=${REMOTE:-anfazsha@dh2020pc10.utm.utoronto.ca}
 readonly REMOTE_ROOT=${REMOTE_ROOT:-/student/anfazsha/v2_11}
+readonly SSH_KEY=${SSH_KEY:-}
+
+started_agent=0
+if ! ssh-add -l >/dev/null 2>&1; then
+  if [[ -z "${SSH_AUTH_SOCK:-}" ]]; then
+    eval "$(ssh-agent -s)" >/dev/null
+    started_agent=1
+  fi
+  echo "Unlocking the SSH key once for this transfer run."
+  if [[ -n "$SSH_KEY" ]]; then
+    ssh-add "$SSH_KEY"
+  else
+    ssh-add
+  fi
+fi
+
+cleanup() {
+  if (( started_agent )); then
+    ssh-agent -k >/dev/null
+  fi
+}
+trap cleanup EXIT
 
 [[ -f "$STATE" ]] || {
   echo "Missing sharder state: $STATE" >&2
