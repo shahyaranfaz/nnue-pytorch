@@ -24,16 +24,16 @@ caches, compilation caches, and active training directories live under
 
 | Host | Lane | Parent | Data | Lambda | LR | Presentations per shard |
 |---|---|---|---|---:|---:|---:|
-| pc16 | A | v2.5 factorized | v2.10 | 0.74 | 4.375e-4 | 330,579,968 |
-| pc19 | B | v2.11 Net1 35B | v2.10 | 0.74 | 2e-5 | 330,579,968 |
-| pc22 | C | v2.11 Net1 35B | v2.10 | 0.90 | 2e-5 | 330,579,968 |
-| pc25 | D | v2.11 Net1 35B | 50/35/15 | 0.74 | 2e-5 | 165,289,984 |
+| pc16 | A | v2.5 factorized | v2.10 | 0.74 | 4.375e-4 | 79,986,688 |
+| pc19 | B | v2.11 Net1 35B | v2.10 | 0.74 | 2e-5 | 79,986,688 |
+| pc22 | C | v2.11 Net1 35B | v2.10 | 0.90 | 2e-5 | 79,986,688 |
+| pc25 | D | v2.11 Net1 35B | 50/35/15 | 0.74 | 2e-5 | 39,993,344 |
 
-The feeder emits an interleaved deterministic 20-shard cycle: ten v2.10, seven
-new Stockfish, and three T80 shards. Lanes A-C consume all 121 v2.10 shards at
-330,579,968 presentations each. Lane D consumes every shard at half that size.
-After 242 total shards all lanes have 40,000,176,128 presentations; Lane D has
-consumed 121 v2.10, 85 Stockfish, and 36 T80 shards (50.0/35.1/14.9%).
+The audition is one deterministic 20-shard cycle: ten v2.10, seven new
+Stockfish, and three T80 shards. Lanes A-C consume the ten v2.10 shards at
+79,986,688 presentations each. Lane D consumes every shard at half that size.
+All four lanes finish at 799,866,880 accepted presentations. The shared
+OneCycle horizon is 48,820 optimizer steps.
 
 ## Required parents
 
