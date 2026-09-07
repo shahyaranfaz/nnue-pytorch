@@ -2,19 +2,22 @@
 set -euo pipefail
 
 readonly REPO=${V211_REPO:-/student/anfazsha/nnue-pytorch}
-readonly ROOT=${V211_ROOT:-/student/anfazsha/v2_11}
-readonly LOCAL_ROOT=${V211_LOCAL_ROOT:-/tmp/anfazsha-v211}
+readonly ROOT=${V211_ROOT:-/student/anfazsha/v2_11_lr_screen}
+readonly LOCAL_ROOT=${V211_LOCAL_ROOT:-/tmp/anfazsha-v211-lr-screen}
 readonly BATCH_SIZE=16384
 readonly EPOCH_SIZE=1048576
 readonly FULL_STEPS=128
 
 case "$(hostname -s)" in
-  dh2010pc16) readonly LANE=lane_a; readonly LAMBDA=0.74; readonly LR=0.0004375; readonly PARENT="$ROOT/parents/v2_5_factorized.pt"; readonly PARENT_SHA=c9b37e262cb917650b445e54d3bb6153d4698b84dcb094c657d75145cd242a79 ;;
-  dh2010pc19) readonly LANE=lane_b; readonly LAMBDA=0.74; readonly LR=0.0000200; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt"; readonly PARENT_SHA=abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1 ;;
-  dh2010pc22) readonly LANE=lane_c; readonly LAMBDA=0.90; readonly LR=0.0000200; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt"; readonly PARENT_SHA=abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1 ;;
-  dh2010pc25) readonly LANE=lane_d; readonly LAMBDA=0.74; readonly LR=0.0000200; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt"; readonly PARENT_SHA=abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1 ;;
+  dh2010pc16) readonly LANE=lr_220; readonly LR=0.0002200 ;;
+  dh2010pc19) readonly LANE=lr_310; readonly LR=0.0003100 ;;
+  dh2010pc22) readonly LANE=lr_4375; readonly LR=0.0004375 ;;
+  dh2010pc25) readonly LANE=lr_620; readonly LR=0.0006200 ;;
   *) echo "No smoke lane is assigned to $(hostname -s)" >&2; exit 1 ;;
 esac
+readonly LAMBDA=0.74
+readonly PARENT=${V211_PARENT:-/student/anfazsha/v2_11/parents/v2_5_factorized.pt}
+readonly PARENT_SHA=c9b37e262cb917650b445e54d3bb6153d4698b84dcb094c657d75145cd242a79
 
 readonly SHARD=${SMOKE_SHARD:-$ROOT/ready/v210_00000.binpack}
 readonly SMOKE_ROOT="$LOCAL_ROOT/smoke/$LANE"

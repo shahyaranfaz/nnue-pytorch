@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly ROOT=${V211_ROOT:-/student/anfazsha/v2_11}
+readonly ROOT=${V211_ROOT:-/student/anfazsha/v2_11_lr_screen}
 readonly POLL_SECONDS=${POLL_SECONDS:-10}
 
 [[ "$(hostname -s)" == dh2020pc10 ]] || {

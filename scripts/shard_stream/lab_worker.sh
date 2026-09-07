@@ -2,19 +2,24 @@
 set -euo pipefail
 
 readonly REPO=${V211_REPO:-/student/anfazsha/nnue-pytorch}
-readonly ROOT=${V211_ROOT:-/student/anfazsha/v2_11}
-readonly LOCAL_ROOT=${V211_LOCAL_ROOT:-/tmp/anfazsha-v211}
+readonly ROOT=${V211_ROOT:-/student/anfazsha/v2_11_lr_screen}
+readonly LOCAL_ROOT=${V211_LOCAL_ROOT:-/tmp/anfazsha-v211-lr-screen}
 readonly POLL_SECONDS=${POLL_SECONDS:-10}
 readonly BATCH_SIZE=16384
 readonly FULL_STEPS=48820
 
 case "$(hostname -s)" in
-  dh2010pc16) readonly LANE=lane_a; readonly LAMBDA=0.74; readonly LR=0.0004375; readonly EPOCH_SIZE=79986688; readonly MAX_SEGMENTS=10; readonly PARENT="$ROOT/parents/v2_5_factorized.pt"; readonly PARENT_SHA=c9b37e262cb917650b445e54d3bb6153d4698b84dcb094c657d75145cd242a79 ;;
-  dh2010pc19) readonly LANE=lane_b; readonly LAMBDA=0.74; readonly LR=0.0000200; readonly EPOCH_SIZE=79986688; readonly MAX_SEGMENTS=10; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt"; readonly PARENT_SHA=abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1 ;;
-  dh2010pc22) readonly LANE=lane_c; readonly LAMBDA=0.90; readonly LR=0.0000200; readonly EPOCH_SIZE=79986688; readonly MAX_SEGMENTS=10; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt"; readonly PARENT_SHA=abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1 ;;
-  dh2010pc25) readonly LANE=lane_d; readonly LAMBDA=0.74; readonly LR=0.0000200; readonly EPOCH_SIZE=39993344; readonly MAX_SEGMENTS=20; readonly PARENT="$ROOT/parents/net1_35B_factorized.pt"; readonly PARENT_SHA=abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1 ;;
+  dh2010pc16) readonly LANE=lr_220; readonly LR=0.0002200 ;;
+  dh2010pc19) readonly LANE=lr_310; readonly LR=0.0003100 ;;
+  dh2010pc22) readonly LANE=lr_4375; readonly LR=0.0004375 ;;
+  dh2010pc25) readonly LANE=lr_620; readonly LR=0.0006200 ;;
   *) echo "No lane is assigned to $(hostname -s)" >&2; exit 1 ;;
 esac
+readonly LAMBDA=0.74
+readonly EPOCH_SIZE=79986688
+readonly MAX_SEGMENTS=10
+readonly PARENT=${V211_PARENT:-/student/anfazsha/v2_11/parents/v2_5_factorized.pt}
+readonly PARENT_SHA=c9b37e262cb917650b445e54d3bb6153d4698b84dcb094c657d75145cd242a79
 
 [[ -f "$PARENT" ]] || { echo "Missing frozen parent: $PARENT" >&2; exit 1; }
 actual_parent_sha=$(sha256sum "$PARENT" | cut -d' ' -f1)
@@ -153,7 +158,7 @@ while (( segment < MAX_SEGMENTS )); do
   fi
   next_segment=$((segment + 1))
   work="$LOCAL_ROOT/work/$LANE-segment-$next_segment"
-  [[ "$work" == /tmp/anfazsha-v211/work/* ]]
+  [[ "$work" == "$LOCAL_ROOT"/work/* ]]
   rm -rf -- "$work"
   mkdir -p "$work"
   log="$work/train.log"
@@ -177,9 +182,6 @@ while (( segment < MAX_SEGMENTS )); do
     --network-save-period=1 --save-top-k=1 --swa-start-epoch=-1
     --seed=42 --default-root-dir="$work"
   )
-  if [[ "$LANE" != lane_a ]]; then
-    args+=(--no-wld-filtered --soft-early-fen-skipping=-1)
-  fi
   if [[ -f "$checkpoint" ]]; then
     args+=(--resume-from-checkpoint="$checkpoint")
   else

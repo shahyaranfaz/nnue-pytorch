@@ -7,11 +7,11 @@ set -euo pipefail
 
 readonly STATE=${STATE:-/mnt/d/nnue/v210_stream_state.json}
 readonly REMOTE=${REMOTE:-anfazsha@dh2020pc10.utm.utoronto.ca}
-readonly REMOTE_ROOT=${REMOTE_ROOT:-/student/anfazsha/v2_11}
+readonly REMOTE_ROOT=${REMOTE_ROOT:-/student/anfazsha/v2_11_lr_screen}
 readonly SSH_KEY=${SSH_KEY:-}
 readonly PENDING_INDEX=${PENDING_INDEX:-0}
 readonly SHARD_KIND=${SHARD_KIND:-v210}
-readonly REQUIRED_LANES=${REQUIRED_LANES:-lane_a,lane_b,lane_c,lane_d}
+readonly REQUIRED_LANES=${REQUIRED_LANES:-lr_220,lr_310,lr_4375,lr_620}
 readonly STREAM_SEQUENCE=${STREAM_SEQUENCE:-0}
 
 started_agent=0

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly REPO=${V211_REPO:-/student/anfazsha/nnue-pytorch}
-readonly LOCAL_ROOT=${V211_LOCAL_ROOT:-/tmp/anfazsha-v211}
+readonly LOCAL_ROOT=${V211_LOCAL_ROOT:-/tmp/anfazsha-v211-lr-screen}
 
 case "$(hostname -s)" in
   dh2010pc16|dh2010pc19|dh2010pc22|dh2010pc25) ;;
@@ -27,7 +27,7 @@ print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))
 PY
 
 test -x build/training_data_loader_bench
-smoke_shard=$(find /student/anfazsha/v2_11/ready -maxdepth 1 -type f -name '*.binpack' -print -quit)
+smoke_shard=$(find "${V211_ROOT:-/student/anfazsha/v2_11_lr_screen}/ready" -maxdepth 1 -type f -name '*.binpack' -print -quit 2>/dev/null || true)
 if [[ -n "$smoke_shard" ]]; then
   build/training_data_loader_bench -i 5 -p 2 -c 0 "$smoke_shard"
 else

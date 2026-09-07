@@ -14,20 +14,26 @@ class ShardAuditionConfigTest(unittest.TestCase):
         text = WORKER.read_text(encoding="utf-8")
         batch_size = int(re.search(r"readonly BATCH_SIZE=(\d+)", text).group(1))
         full_steps = int(re.search(r"readonly FULL_STEPS=(\d+)", text).group(1))
-        lane_values = re.findall(
-            r"dh2010pc(?:16|19|22|25)\).*?EPOCH_SIZE=(\d+); readonly MAX_SEGMENTS=(\d+);",
+        epoch_size = int(re.search(r"readonly EPOCH_SIZE=(\d+)", text).group(1))
+        max_segments = int(re.search(r"readonly MAX_SEGMENTS=(\d+)", text).group(1))
+        lanes = re.findall(r"dh2010pc(?:16|19|22|25)\) readonly LANE=(lr_[0-9]+)", text)
+
+        self.assertEqual(lanes, ["lr_220", "lr_310", "lr_4375", "lr_620"])
+        self.assertEqual(epoch_size * max_segments, 799_866_880)
+        self.assertEqual((epoch_size // batch_size) * max_segments, full_steps)
+        self.assertEqual(full_steps, 48_820)
+
+    def test_lr_is_the_only_experimental_variable(self):
+        text = WORKER.read_text(encoding="utf-8")
+        values = re.findall(
+            r"dh2010pc(?:16|19|22|25)\) readonly LANE=lr_[0-9]+; readonly LR=([0-9.]+)",
             text,
         )
-
-        self.assertEqual(len(lane_values), 4)
-        budgets = {int(epoch_size) * int(segments) for epoch_size, segments in lane_values}
-        steps = {
-            (int(epoch_size) // batch_size) * int(segments)
-            for epoch_size, segments in lane_values
-        }
-        self.assertEqual(budgets, {799_866_880})
-        self.assertEqual(steps, {full_steps})
-        self.assertEqual(full_steps, 48_820)
+        self.assertEqual(values, ["0.0002200", "0.0003100", "0.0004375", "0.0006200"])
+        self.assertRegex(text, r"readonly LAMBDA=0\.74\b")
+        self.assertIn("/v2_11/parents/v2_5_factorized.pt", text)
+        self.assertNotIn("net1_35B_factorized.pt", text)
+        self.assertNotIn("--no-wld-filtered", text)
 
     def test_worker_can_recover_checkpoint_before_ack_window(self):
         text = WORKER.read_text(encoding="utf-8")
@@ -64,10 +70,19 @@ class ShardAuditionConfigTest(unittest.TestCase):
         self.assertIn('Preparing local successor', text)
         self.assertLess(text.index('Publishing prepared successor'), text.index('Preparing local successor'))
         schedule = re.search(r"readonly SCHEDULE=\(([^)]+)\)", text).group(1).split()
-        self.assertEqual(len(schedule), 20)
-        self.assertEqual(schedule.count("v210"), 10)
-        self.assertEqual(schedule.count("stockfish"), 7)
-        self.assertEqual(schedule.count("t80"), 3)
+        self.assertEqual(schedule, ["v210"] * 10)
+        self.assertIn("LR-screen feeder complete", text)
+        self.assertIn("schedule_index >= ${#SCHEDULE[@]}", text)
+        self.assertNotIn("stockfish_base", text)
+        self.assertNotIn("t80_base", text)
+
+    def test_lr_screen_uses_fresh_persistent_and_local_namespaces(self):
+        worker = WORKER.read_text(encoding="utf-8")
+        feeder = FEEDER.read_text(encoding="utf-8")
+        self.assertIn("/student/anfazsha/v2_11_lr_screen", worker)
+        self.assertIn("/tmp/anfazsha-v211-lr-screen", worker)
+        self.assertIn("/mnt/d/nnue/v211_lr_screen_stream", feeder)
+        self.assertIn("/student/anfazsha/v2_11_lr_screen", feeder)
 
     def test_smoke_is_disposable_and_checks_two_phase_resume(self):
         text = SMOKE.read_text(encoding="utf-8")

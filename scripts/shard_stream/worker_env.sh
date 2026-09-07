@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# Source this file before running a Net3 consumer segment.
+# Source this file before running a compressed Net4 LR-screen segment.
 
-export V211_LOCAL_ROOT=${V211_LOCAL_ROOT:-/tmp/anfazsha-v211}
+export V211_LOCAL_ROOT=${V211_LOCAL_ROOT:-/tmp/anfazsha-v211-lr-screen}
 export V211_REPO=${V211_REPO:-/student/anfazsha/nnue-pytorch}
 export VIRTUAL_ENV_DISABLE_PROMPT=1
 export PYTHONDONTWRITEBYTECODE=1

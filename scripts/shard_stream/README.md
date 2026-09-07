@@ -1,123 +1,129 @@
-# SHAYVERI v2.11 Net3 shard stream
+# SHAYVERI v2.11 Net4 compressed LR screen
 
-This directory implements a machine-resident pipeline. The laptop has no
-runtime role.
+This directory runs a four-lane learning-rate screen on the UofT lab machines.
+The RX 9070 XT Net4 production run is separate and continues uninterrupted.
+The laptop only opens terminals and edits repositories; it has no runtime role.
 
-## Roles
+## Question and limitations
 
-- RX 9070 XT: run `source_feeder.sh` continuously during the lab auditions. It
-  retains at most one remote 2.75 GB native binpack shard and prepares one local
-  successor while that shard is training. It transfers through
-  `dh2020pc10.utm.utoronto.ca` and advances only after remote deletion.
-- `dh2020pc10`: run `lab_master.sh` continuously. It deletes a shared-NFS shard
-  only after every required lane has written a durable checkpoint ACK.
-- `dh2010pc16`, `19`, `22`, and `25`: run `bootstrap_lab_pc.sh` once and then
-  run the audition worker continuously. The final selected recipe trains on the
-  RX 9070 XT against the complete local corpus.
+The screen asks whether `0.0004375` is a reasonable maximum LR after correcting
+lambda from the historical effective value of 1.0 to 0.74. It is a directional
+800M-presentation audition, not proof of the optimal LR for the full 40B
+OneCycle. Every lane compresses a complete OneCycle into the same 48,820-step
+horizon, exactly as Net3A did.
 
-The shared root is `/student/anfazsha/v2_11`. The account has about 4.5 GB free,
-so only one shard may be ready at a time. Only source shards, current
-checkpoints, compressed logs, ACKs, and deletion markers live on NFS. Venvs,
-caches, compilation caches, and active training directories live under
-`/tmp/anfazsha-v211` on each worker.
+Only maximum LR varies:
 
-Each lane keeps one resumable checkpoint and exports compact `.nnue` files at
-its midpoint and final gate. A durable pending record is written before every
-segment. If a worker dies after publishing its checkpoint but before its ACK,
-the next invocation verifies the checkpoint's global step and reconstructs the
-completion without training the shard twice.
+| Host | Lane | Maximum LR |
+|---|---|---:|
+| `dh2010pc16` | `lr_220` | 0.0002200 |
+| `dh2010pc19` | `lr_310` | 0.0003100 |
+| `dh2010pc22` | `lr_4375` | 0.0004375 |
+| `dh2010pc25` | `lr_620` | 0.0006200 |
 
-Set `V211_FAIL_AFTER_CHECKPOINT=1` for one controlled worker invocation to exit
-with status 86 after publishing `current.ckpt` but before writing completion or
-ACK. Restart without the variable to exercise and verify recovery.
+All lanes use the frozen v2.5 factorized parent, reconstructed v2.10 corpus,
+v2.10 filters, lambda 0.74, RangerLite, batch size 16,384, seed 42, ten segments
+of 79,986,688 presentations, and 799,866,880 total presentations. Midpoint and
+final NNUEs are exported near 400M and 800M.
 
-## Encoded experiments
+## Isolated state
 
-| Host | Lane | Parent | Data | Lambda | LR | Presentations per shard |
-|---|---|---|---|---:|---:|---:|
-| pc16 | A | v2.5 factorized | v2.10 | 0.74 | 4.375e-4 | 79,986,688 |
-| pc19 | B | v2.11 Net1 35B | v2.10 | 0.74 | 2e-5 | 79,986,688 |
-| pc22 | C | v2.11 Net1 35B | v2.10 | 0.90 | 2e-5 | 79,986,688 |
-| pc25 | D | v2.11 Net1 35B | 50/35/15 | 0.74 | 2e-5 | 39,993,344 |
+This screen deliberately does not reuse completed Net3 state:
 
-The audition is one deterministic 20-shard cycle: ten v2.10, seven new
-Stockfish, and three T80 shards. Lanes A-C consume the ten v2.10 shards at
-79,986,688 presentations each. Lane D consumes every shard at half that size.
-All four lanes finish at 799,866,880 accepted presentations. The shared
-OneCycle horizon is 48,820 optimizer steps.
+- Shared NFS root: `/student/anfazsha/v2_11_lr_screen`
+- Worker-local root: `/tmp/anfazsha-v211-lr-screen`
+- 9070 sharder state: `/mnt/d/nnue/v211_lr_screen_stream`
+- Frozen parent: `/student/anfazsha/v2_11/parents/v2_5_factorized.pt`
 
-## Required parents
-
-Before starting workers, place immutable factorized PyTorch models at:
+Expected parent SHA-256:
 
 ```text
-/student/anfazsha/v2_11/parents/v2_5_factorized.pt
-/student/anfazsha/v2_11/parents/net1_35B_factorized.pt
+c9b37e262cb917650b445e54d3bb6153d4698b84dcb094c657d75145cd242a79
 ```
 
-Record their SHA-256 values separately before production. `train.py` loads
-warm models with `torch.load`; exported `.nnue` files are not valid substitutes.
+The NFS root holds one 2.75GB shard at a time, four current checkpoints,
+compressed logs, ACKs, and compact NNUE gates. Active training, venvs, and
+caches remain under each machine's `/tmp`.
 
-The worker-enforced hashes are:
+## Runtime roles
 
-```text
-v2_5_factorized.pt     c9b37e262cb917650b445e54d3bb6153d4698b84dcb094c657d75145cd242a79
-net1_35B_factorized.pt abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1
-```
+- RX 9070 XT: `source_feeder.sh` creates and transfers ten v2.10 shards. It
+  keeps at most one remote shard and one locally prepared successor, and exits
+  after all ten are acknowledged.
+- `dh2020pc10`: `lab_master.sh` deletes the shared shard only after all four
+  lanes publish durable checkpoint ACKs.
+- `dh2010pc16`, `19`, `22`, `25`: `lab_worker.sh` trains the assigned LR lane
+  until 799,866,880 presentations and then exits.
 
-## Size the auditions
+The durable pending/checkpoint/ACK recovery protocol remains enabled. A shard
+is never deleted before all four current checkpoints cover it.
 
-Before starting workers, count one complete non-cyclic pass through the first
-v2.10 shard under both filtering recipes:
+## Start from a clean screen namespace
+
+The defaults are fresh, so do not set `V211_ROOT`, `V211_LOCAL_ROOT`, or
+`V211_STREAM` to old Net3 locations. Confirm the parent once from a lab machine:
 
 ```bash
-source scripts/shard_stream/worker_env.sh
-python scripts/shard_stream/count_accepted_positions.py \
-  --profile=both \
-  /student/anfazsha/v2_11/ready/v210_00000.binpack
+sha256sum /student/anfazsha/v2_11/parents/v2_5_factorized.pt
 ```
 
-Use the reported complete-batch counts to set a segment budget that has only a
-small, explicit amount of local replay. Do not start the retired 40B-per-lane
-worker configuration.
-
-## Startup
-
-Run once on each of the four trainers:
+Pull the new code on pc10 and every trainer:
 
 ```bash
 cd /student/anfazsha/nnue-pytorch
-bash scripts/shard_stream/bootstrap_lab_pc.sh
+git pull
 ```
 
-Before starting the audition pipeline, run the disposable 2-phase resume and
-serialization smoke test on each trainer:
+The existing lab venv need not be reinstalled. On each trainer, reuse it through
+the new isolated local root:
 
 ```bash
-cd /student/anfazsha/nnue-pytorch
-bash scripts/shard_stream/smoke_lab_worker.sh
+mkdir -p /tmp/anfazsha-v211-lr-screen
+ln -s /tmp/anfazsha-v211/venv /tmp/anfazsha-v211-lr-screen/venv
 ```
 
-The smoke test writes only under `/tmp/anfazsha-v211/smoke`, does not publish an
-ACK, and does not alter the persistent audition state.
+Alternatively, run `bootstrap_lab_pc.sh` on each trainer to build the new local
+environment independently.
 
-Run continuously on pc10:
+## Launch
+
+On `dh2020pc10`:
 
 ```bash
 cd /student/anfazsha/nnue-pytorch
 bash scripts/shard_stream/lab_master.sh
 ```
 
-Run continuously on each trainer:
+On each trainer:
 
 ```bash
 cd /student/anfazsha/nnue-pytorch
 bash scripts/shard_stream/lab_worker.sh
 ```
 
-Run continuously on the 9070 XT:
+On the RX 9070 XT:
 
 ```bash
 cd /mnt/d/nnue/nnue-pytorch
 bash scripts/shard_stream/source_feeder.sh
 ```
+
+Start the master and workers before the feeder. Idle workers wait for the first
+shard. The feeder transfers about 27.5GB total, shared by all four workers,
+rather than one copy per worker.
+
+## Completion and evaluation
+
+Final nets appear under:
+
+```text
+/student/anfazsha/v2_11_lr_screen/nets/lr_220/
+/student/anfazsha/v2_11_lr_screen/nets/lr_310/
+/student/anfazsha/v2_11_lr_screen/nets/lr_4375/
+/student/anfazsha/v2_11_lr_screen/nets/lr_620/
+```
+
+Evaluate the four 800M finals in one connected `5+0.05` pool, anchored by v2.5,
+historical v2.10 Net1 5B, and current Net4 5B if practical. Compare direct W-D-L
+edges, not training loss. The screen informs the ongoing production run; it
+does not automatically replace or stop it.
