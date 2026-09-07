@@ -44,7 +44,7 @@ def initial_state(inputs: list[Path]) -> dict:
         "input_index": 0,
         "input_offset": 0,
         "next_shard": 0,
-        "pending": None,
+        "pending": [],
     }
 
 
@@ -55,6 +55,10 @@ def load_state(path: Path, inputs: list[Path]) -> dict:
     state = json.loads(path.read_text(encoding="utf-8"))
     if state.get("version") != 1 or state.get("inputs") != expected:
         raise ValueError("state file does not match this ordered input list")
+    if isinstance(state.get("pending"), dict):
+        state["pending"] = [state["pending"]]
+    elif state.get("pending") is None:
+        state["pending"] = []
     return state
 
 
@@ -80,8 +84,8 @@ def produce(args: argparse.Namespace) -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     state = load_state(args.state, inputs)
     pending = state["pending"]
-    if pending:
-        print(f"Pending shard must be acknowledged first: {pending['path']}")
+    if len(pending) >= args.max_pending:
+        print(f"Pending shard limit reached ({args.max_pending}).")
         return 2
     if state["input_index"] >= len(inputs):
         print("Corpus complete.")
@@ -136,7 +140,7 @@ def produce(args: argparse.Namespace) -> int:
 
     os.replace(partial, final)
     state["next_shard"] += 1
-    state["pending"] = {
+    record = {
         "path": str(final.resolve()),
         "bytes": written,
         "chunks": chunks,
@@ -146,21 +150,25 @@ def produce(args: argparse.Namespace) -> int:
         "end_input_index": state["input_index"],
         "end_input_offset": state["input_offset"],
     }
+    state["pending"].append(record)
     atomic_json(args.state, state)
-    print(json.dumps(state["pending"], indent=2))
+    print(json.dumps(record, indent=2))
     return 0
 
 
 def acknowledge(args: argparse.Namespace) -> int:
     state = json.loads(args.state.read_text(encoding="utf-8"))
-    pending = state.get("pending")
+    pending = state.get("pending") or []
+    if isinstance(pending, dict):
+        pending = [pending]
     if not pending:
         print("No pending shard.")
         return 0
-    shard = Path(pending["path"])
+    record = pending[0]
+    shard = Path(record["path"])
     if not args.keep and shard.exists():
         shard.unlink()
-    state["pending"] = None
+    state["pending"] = pending[1:]
     atomic_json(args.state, state)
     print(f"Acknowledged shard {shard.name}")
     return 0
@@ -168,17 +176,22 @@ def acknowledge(args: argparse.Namespace) -> int:
 
 def retry(args: argparse.Namespace) -> int:
     state = json.loads(args.state.read_text(encoding="utf-8"))
-    pending = state.get("pending")
+    pending = state.get("pending") or []
+    if isinstance(pending, dict):
+        pending = [pending]
     if not pending:
         print("No pending shard.")
         return 0
-    shard = Path(pending["path"])
+    if len(pending) != 1:
+        raise ValueError("retry is only safe when exactly one shard is pending")
+    record = pending[0]
+    shard = Path(record["path"])
     shard.unlink(missing_ok=True)
     shard.with_suffix(shard.suffix + ".partial").unlink(missing_ok=True)
-    state["input_index"] = pending["start_input_index"]
-    state["input_offset"] = pending["start_input_offset"]
+    state["input_index"] = record["start_input_index"]
+    state["input_offset"] = record["start_input_offset"]
     state["next_shard"] -= 1
-    state["pending"] = None
+    state["pending"] = []
     atomic_json(args.state, state)
     print(f"Rewound shard {shard.name}; run next to regenerate it")
     return 0
@@ -202,6 +215,7 @@ def main() -> int:
     create.add_argument("--state", type=Path, required=True)
     create.add_argument("--prefix", default="v210")
     create.add_argument("--target-size", default="2750M")
+    create.add_argument("--max-pending", type=int, default=1)
     create.set_defaults(func=produce)
 
     ack = subparsers.add_parser("ack", help="delete and advance past the pending shard")
@@ -222,6 +236,8 @@ def main() -> int:
         args.target_bytes = parse_size(args.target_size)
         if args.target_bytes <= HEADER_SIZE:
             parser.error("--target-size is too small")
+        if args.max_pending <= 0:
+            parser.error("--max-pending must be positive")
     return args.func(args)
 
 

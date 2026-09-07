@@ -50,6 +50,21 @@ class ShardBinpacksTest(unittest.TestCase):
             document = json.loads(state.read_text())
             self.assertEqual(document["input_index"], 2)
 
+    def test_allows_two_pending_shards(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "a.binpack"
+            source.write_bytes(chunk(b"a" * 5) + chunk(b"b" * 5))
+            command = [sys.executable, str(SCRIPT), "next", str(source),
+                       "--output-dir", str(root / "out"),
+                       "--state", str(root / "state.json"),
+                       "--target-size", "13", "--max-pending", "2"]
+            self.assertEqual(subprocess.run(command).returncode, 0)
+            self.assertEqual(subprocess.run(command).returncode, 0)
+            self.assertEqual(subprocess.run(command).returncode, 2)
+            state = json.loads((root / "state.json").read_text())
+            self.assertEqual(len(state["pending"]), 2)
+
     def test_rejects_invalid_header(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

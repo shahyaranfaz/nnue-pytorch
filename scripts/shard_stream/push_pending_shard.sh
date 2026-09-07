@@ -9,6 +9,10 @@ readonly STATE=${STATE:-/mnt/d/nnue/v210_stream_state.json}
 readonly REMOTE=${REMOTE:-anfazsha@dh2020pc10.utm.utoronto.ca}
 readonly REMOTE_ROOT=${REMOTE_ROOT:-/student/anfazsha/v2_11}
 readonly SSH_KEY=${SSH_KEY:-}
+readonly PENDING_INDEX=${PENDING_INDEX:-0}
+readonly SHARD_KIND=${SHARD_KIND:-v210}
+readonly REQUIRED_LANES=${REQUIRED_LANES:-lane_a,lane_b,lane_c,lane_d}
+readonly STREAM_SEQUENCE=${STREAM_SEQUENCE:-0}
 
 started_agent=0
 if ! ssh-add -l >/dev/null 2>&1; then
@@ -37,14 +41,17 @@ trap cleanup EXIT
 }
 
 mapfile -t pending < <(
-  python3 - "$STATE" <<'PY'
+  python3 - "$STATE" "$PENDING_INDEX" <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as source:
-    value = json.load(source).get("pending")
-if not value:
+    values = json.load(source).get("pending")
+if isinstance(values, dict):
+    values = [values]
+if not values:
     raise SystemExit("State has no pending shard")
+value = values[int(sys.argv[2])]
 print(value["path"])
 print(value["bytes"])
 print(value["sha256"])
@@ -95,16 +102,24 @@ remote_partial="$REMOTE_ROOT/incoming/$name.partial"
 remote_ready="$REMOTE_ROOT/ready/$name"
 
 echo "Uploading $name ($expected_bytes bytes)"
-scp -p -- "$shard" "$REMOTE:$remote_partial"
+if ssh "$REMOTE" test -f "$remote_ready"; then
+  echo "Remote ready file already exists; verifying without re-upload"
+else
+  scp -p -- "$shard" "$REMOTE:$remote_partial"
+fi
 
 echo "Verifying and publishing $name"
 ssh "$REMOTE" bash -s -- \
-  "$REMOTE_ROOT" "$name" "$expected_bytes" "$expected_sha" <<'REMOTE_PUBLISH'
+  "$REMOTE_ROOT" "$name" "$expected_bytes" "$expected_sha" \
+  "$SHARD_KIND" "$REQUIRED_LANES" "$STREAM_SEQUENCE" <<'REMOTE_PUBLISH'
 set -euo pipefail
 root=$1
 name=$2
 expected_bytes=$3
 expected_sha=$4
+kind=$5
+required_lanes=$6
+stream_sequence=$7
 partial="$root/incoming/$name.partial"
 ready="$root/ready/$name"
 
@@ -116,6 +131,14 @@ if [[ -f "$ready" ]]; then
     exit 1
   }
   rm -f -- "$partial"
+  {
+    printf 'kind=%s\n' "$kind"
+    printf 'required_lanes=%s\n' "$required_lanes"
+    printf 'bytes=%s\n' "$expected_bytes"
+    printf 'sha256=%s\n' "$expected_sha"
+    printf 'stream_sequence=%s\n' "$stream_sequence"
+  } > "$root/ready/$name.meta.partial"
+  mv -- "$root/ready/$name.meta.partial" "$root/ready/$name.meta"
   echo "Already published and verified: $ready"
   exit 0
 fi
@@ -137,6 +160,14 @@ actual_sha=$(sha256sum -- "$partial" | cut -d' ' -f1)
 
 mv -- "$partial" "$ready"
 printf '%s  %s\n' "$expected_sha" "$name" > "$root/ready/$name.sha256"
+{
+  printf 'kind=%s\n' "$kind"
+  printf 'required_lanes=%s\n' "$required_lanes"
+  printf 'bytes=%s\n' "$expected_bytes"
+  printf 'sha256=%s\n' "$expected_sha"
+  printf 'stream_sequence=%s\n' "$stream_sequence"
+} > "$root/ready/$name.meta.partial"
+mv -- "$root/ready/$name.meta.partial" "$root/ready/$name.meta"
 echo "Published: $ready"
 REMOTE_PUBLISH
 
