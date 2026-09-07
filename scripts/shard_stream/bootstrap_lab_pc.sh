@@ -12,7 +12,7 @@ esac
 [[ -f "$REPO/train.py" ]] || { echo "Missing trainer: $REPO" >&2; exit 1; }
 mkdir -p "$LOCAL_ROOT"
 if [[ ! -x "$LOCAL_ROOT/venv/bin/python" ]]; then
-  python3 -m venv --system-site-packages "$LOCAL_ROOT/venv"
+  python3 -m venv --without-pip --system-site-packages "$LOCAL_ROOT/venv"
 fi
 
 # shellcheck disable=SC1091
