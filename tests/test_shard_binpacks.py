@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "scripts" / "shard_binpacks.py"
+SCRIPT = ROOT / "scripts" / "shard_stream" / "shard_binpacks.py"
 
 
 def chunk(payload: bytes) -> bytes:
