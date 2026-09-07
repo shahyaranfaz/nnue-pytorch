@@ -7,7 +7,7 @@ readonly STREAM=${V211_STREAM:-/mnt/d/nnue/v211_stream}
 readonly REMOTE=${REMOTE:-anfazsha@dh2020pc10.utm.utoronto.ca}
 readonly REMOTE_ROOT=${REMOTE_ROOT:-/student/anfazsha/v2_11}
 readonly POLL_SECONDS=${POLL_SECONDS:-10}
-readonly MAX_IN_FLIGHT=2
+readonly MAX_IN_FLIGHT=1
 readonly SCHEDULE=(v210 stockfish v210 stockfish t80 v210 stockfish v210 v210 stockfish t80 v210 stockfish v210 stockfish v210 t80 v210 stockfish v210)
 
 started_agent=0
@@ -43,6 +43,7 @@ fi
 
 echo "9070 feeder active; maximum remote in-flight shards=$MAX_IN_FLIGHT"
 while true; do
+  remote_count=$(ssh "$REMOTE" "find '$REMOTE_ROOT/ready' -maxdepth 1 -type f -name '*.binpack' | wc -l")
   for kind in v210 stockfish t80; do
     state="$STREAM/state/$kind.json"
     [[ -f "$state" ]] || continue
@@ -69,6 +70,9 @@ PY
           REQUIRED_LANES="$required" REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
           bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
       else
+        if (( remote_count >= MAX_IN_FLIGHT )); then
+          continue
+        fi
         case "$kind" in
           v210) required=lane_a,lane_b,lane_c,lane_d ;;
           *) required=lane_d ;;
@@ -76,6 +80,7 @@ PY
         STATE="$state" PENDING_INDEX=0 SHARD_KIND="$kind" STREAM_SEQUENCE="$schedule_index" \
           REQUIRED_LANES="$required" REMOTE="$REMOTE" REMOTE_ROOT="$REMOTE_ROOT" \
           bash "$REPO/scripts/shard_stream/push_pending_shard.sh"
+        remote_count=$((remote_count + 1))
       fi
     fi
   done

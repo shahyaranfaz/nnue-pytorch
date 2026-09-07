@@ -5,15 +5,17 @@ runtime role.
 
 ## Roles
 
-- RX 9070 XT: run `source_feeder.sh` continuously. It creates and retains at
-  most two 2.75 GB native binpack shards, transfers them through
+- RX 9070 XT: run `source_feeder.sh` continuously during the lab auditions. It
+  creates and retains at most one remote 2.75 GB native binpack shard, transfers it through
   `dh2020pc10.utm.utoronto.ca`, and advances only after remote deletion.
 - `dh2020pc10`: run `lab_master.sh` continuously. It deletes a shared-NFS shard
   only after every required lane has written a durable checkpoint ACK.
 - `dh2010pc16`, `19`, `22`, and `25`: run `bootstrap_lab_pc.sh` once and then
-  `lab_worker.sh` continuously.
+  run the audition worker continuously. The final selected recipe trains on the
+  RX 9070 XT against the complete local corpus.
 
-The shared root is `/student/anfazsha/v2_11`. Only source shards, current
+The shared root is `/student/anfazsha/v2_11`. The account has about 4.5 GB free,
+so only one shard may be ready at a time. Only source shards, current
 checkpoints, compressed logs, ACKs, and deletion markers live on NFS. Venvs,
 caches, compilation caches, and active training directories live under
 `/tmp/anfazsha-v211` on each worker.
@@ -51,6 +53,22 @@ The worker-enforced hashes are:
 v2_5_factorized.pt     c9b37e262cb917650b445e54d3bb6153d4698b84dcb094c657d75145cd242a79
 net1_35B_factorized.pt abe2ce14392ea07d0f2eb3279468299fc546bbd1a14f5367877d1c1adfe684e1
 ```
+
+## Size the auditions
+
+Before starting workers, count one complete non-cyclic pass through the first
+v2.10 shard under both filtering recipes:
+
+```bash
+source scripts/shard_stream/worker_env.sh
+python scripts/shard_stream/count_accepted_positions.py \
+  --profile=both \
+  /student/anfazsha/v2_11/ready/v210_00000.binpack
+```
+
+Use the reported complete-batch counts to set a segment budget that has only a
+small, explicit amount of local replay. Do not start the retired 40B-per-lane
+worker configuration.
 
 ## Startup
 
