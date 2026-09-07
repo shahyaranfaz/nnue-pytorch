@@ -195,6 +195,10 @@ while (( segment < MAX_SEGMENTS )); do
 
   cp -- "$produced" "$lane_root/checkpoints/current.ckpt.partial"
   mv -- "$lane_root/checkpoints/current.ckpt.partial" "$checkpoint"
+  if [[ "${V211_FAIL_AFTER_CHECKPOINT:-0}" == 1 ]]; then
+    echo "Injected failure after durable checkpoint and before completion/ACK"
+    exit 86
+  fi
   gzip -c "$log" > "$lane_root/logs/segment_$(printf '%03d' "$next_segment").log.gz.partial"
   mv -- "$lane_root/logs/segment_$(printf '%03d' "$next_segment").log.gz.partial" \
     "$lane_root/logs/segment_$(printf '%03d' "$next_segment").log.gz"

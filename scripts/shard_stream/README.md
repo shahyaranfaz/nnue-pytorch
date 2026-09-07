@@ -26,6 +26,10 @@ segment. If a worker dies after publishing its checkpoint but before its ACK,
 the next invocation verifies the checkpoint's global step and reconstructs the
 completion without training the shard twice.
 
+Set `V211_FAIL_AFTER_CHECKPOINT=1` for one controlled worker invocation to exit
+with status 86 after publishing `current.ckpt` but before writing completion or
+ACK. Restart without the variable to exercise and verify recovery.
+
 ## Encoded experiments
 
 | Host | Lane | Parent | Data | Lambda | LR | Presentations per shard |

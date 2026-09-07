@@ -38,6 +38,11 @@ class ShardAuditionConfigTest(unittest.TestCase):
         self.assertIn('actual_step=$(checkpoint_global_step "$checkpoint")', text)
         self.assertIn('publish_completion "$pending_segment" "$pending_shard" 1', text)
         self.assertIn('rm -f -- "$pending_file"', text)
+        checkpoint_publish = 'mv -- "$lane_root/checkpoints/current.ckpt.partial" "$checkpoint"'
+        failpoint = '"${V211_FAIL_AFTER_CHECKPOINT:-0}" == 1'
+        normal_completion = 'publish_completion "$next_segment" "$name"'
+        self.assertLess(text.index(checkpoint_publish), text.index(failpoint))
+        self.assertLess(text.index(failpoint), text.index(normal_completion))
 
     def test_worker_exports_only_midpoint_and_final_nnue_gates(self):
         text = WORKER.read_text(encoding="utf-8")
