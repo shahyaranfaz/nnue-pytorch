@@ -40,6 +40,12 @@ class Net7ConfigTest(unittest.TestCase):
         self.assertIn("cmp -- \"$net\" \"$roundtrip\"", self.text)
         self.assertIn("go nodes 1000", self.text)
 
+    def test_large_corpus_files_are_not_rehashed(self):
+        manifest = self.text.split("write_manifest() {", 1)[1].split("run_preflight() {", 1)[0]
+        self.assertNotIn("sha256sum", manifest)
+        self.assertIn("stat -c %s", manifest)
+        self.assertIn("stat -c %Y", manifest)
+
 
 if __name__ == "__main__":
     unittest.main()

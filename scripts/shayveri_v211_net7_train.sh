@@ -72,7 +72,7 @@ write_manifest() {
   local output=$1 file
   : > "$output"
   for file in "${FILES[@]}"; do
-    printf '%s\t%s\t%s\n' "$(sha256sum "$file" | cut -d' ' -f1)" "$(stat -c %s "$file")" "$file" >> "$output"
+    printf '%s\t%s\t%s\n' "$(stat -c %s "$file")" "$(stat -c %Y "$file")" "$file" >> "$output"
   done
 }
 
@@ -144,4 +144,3 @@ case "${1:-}" in
   recover) [[ $# -eq 2 ]] || usage; run_production recover "$2" ;;
   *) usage ;;
 esac
-
