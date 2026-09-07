@@ -44,7 +44,7 @@ def count_profile(paths: list[Path], profile: str, batch_size: int, workers: int
         config.soft_early_fen_skipping = -1
 
     dataset = data_loader.SparseBatchDataset(
-        "ShayveriKB16^",
+        "ShayveriKB16",
         [str(path) for path in paths],
         batch_size,
         cyclic=False,

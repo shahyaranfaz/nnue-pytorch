@@ -41,6 +41,7 @@ class CountAcceptedPositionsTest(unittest.TestCase):
     def test_lane_a_preserves_v210_net1_filters(self):
         observed, result = self.run_profile("lane-a")
         config = observed["kwargs"]["config"]
+        self.assertEqual(observed["feature_set"], "ShayveriKB16")
         self.assertTrue(config.wld_filtered)
         self.assertEqual(config.soft_early_fen_skipping, 20)
         self.assertFalse(observed["kwargs"]["cyclic"])
